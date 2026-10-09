@@ -6,175 +6,208 @@ from typing import Dict, Any, List, Optional
 PROXMOX_HOST = os.getenv("PROXMOX_HOST", "127.0.0.1")
 PROXMOX_PORT = int(os.getenv("PROXMOX_PORT", "8006"))
 PROXMOX_USER = os.getenv("PROXMOX_USER", "root@pam")
-PROXMOX_PASS = os.getenv("PROXMOX_PASS", "ProxmoxAdmin2026!")
-
-BASE_URL = f"https://{PROXMOX_HOST}:{PROXMOX_PORT}/api2/json"
+PROXMOX_PASSWORD = os.getenv("PROXMOX_PASSWORD", "ProxmoxAdmin2026!")
 
 class ProxmoxClient:
     def __init__(self):
+        self.base_url = f"https://{PROXMOX_HOST}:{PROXMOX_PORT}/api2/json"
         self.ticket: Optional[str] = None
         self.csrf_token: Optional[str] = None
-        self.ticket_timestamp: float = 0
-        self.client = httpx.AsyncClient(verify=False, timeout=20.0)
+        self.ticket_expires: float = 0
 
     async def _ensure_auth(self):
-        # Refresh ticket if older than 1.5 hours (tokens valid for 2h)
-        if not self.ticket or (time.time() - self.ticket_timestamp > 5400):
-            await self._login()
+        if self.ticket and time.time() < self.ticket_expires:
+            return
 
-    async def _login(self):
-        try:
-            resp = await self.client.post(
-                f"{BASE_URL}/access/ticket",
-                data={"username": PROXMOX_USER, "password": PROXMOX_PASS}
+        async with httpx.AsyncClient(verify=False, timeout=15.0) as client:
+            resp = await client.post(
+                f"{self.base_url}/access/ticket",
+                data={"username": PROXMOX_USER, "password": PROXMOX_PASSWORD}
             )
-            resp.raise_for_status()
-            data = resp.json().get("data", {})
-            self.ticket = data.get("ticket")
-            self.csrf_token = data.get("CSRFPreventionToken")
-            self.ticket_timestamp = time.time()
-        except Exception as e:
-            print(f"[ProxmoxClient] Auth error: {e}")
-            raise
+            if resp.status_code != 200:
+                raise Exception(f"Failed to authenticate with Proxmox: {resp.text}")
 
-    def _get_headers(self) -> Dict[str, str]:
-        headers = {}
-        if self.csrf_token:
-            headers["CSRFPreventionToken"] = self.csrf_token
-        return headers
+            data = resp.json()["data"]
+            self.ticket = data["ticket"]
+            self.csrf_token = data["CSRFPreventionToken"]
+            self.ticket_expires = time.time() + 7000
 
-    def _get_cookies(self) -> Dict[str, str]:
-        cookies = {}
-        if self.ticket:
-            cookies["PVEAuthCookie"] = self.ticket
-        return cookies
-
-    async def get_cluster_resources(self, resource_type: Optional[str] = None) -> List[Dict[str, Any]]:
+    async def _request(self, method: str, path: str, data: Optional[Dict[str, Any]] = None, params: Optional[Dict[str, Any]] = None) -> Any:
         await self._ensure_auth()
-        params = {}
-        if resource_type:
-            params["type"] = resource_type
-        resp = await self.client.get(
-            f"{BASE_URL}/cluster/resources",
-            headers=self._get_headers(),
-            cookies=self._get_cookies(),
-            params=params
-        )
-        resp.raise_for_status()
-        return resp.json().get("data", [])
+        headers = {
+            "CSRFPreventionToken": self.csrf_token,
+            "Cookie": f"PVEAuthCookie={self.ticket}"
+        }
+        url = f"{self.base_url}{path}"
+        async with httpx.AsyncClient(verify=False, timeout=60.0) as client:
+            if method.upper() == "GET":
+                resp = await client.get(url, headers=headers, params=params)
+            elif method.upper() == "POST":
+                resp = await client.post(url, headers=headers, data=data, params=params)
+            elif method.upper() == "PUT":
+                resp = await client.put(url, headers=headers, data=data, params=params)
+            elif method.upper() == "DELETE":
+                resp = await client.delete(url, headers=headers, params=params)
+            else:
+                raise ValueError(f"Unsupported HTTP method: {method}")
+
+            if resp.status_code not in [200, 201, 204]:
+                raise Exception(f"Proxmox API Error [{resp.status_code}]: {resp.text}")
+
+            res = resp.json()
+            return res.get("data", res)
+
+    # Cluster & Node Health
+    async def get_cluster_status(self) -> List[Dict[str, Any]]:
+        return await self._request("GET", "/cluster/status")
+
+    async def get_cluster_resources(self) -> List[Dict[str, Any]]:
+        return await self._request("GET", "/cluster/resources")
 
     async def get_nodes(self) -> List[Dict[str, Any]]:
-        await self._ensure_auth()
-        resp = await self.client.get(
-            f"{BASE_URL}/nodes",
-            headers=self._get_headers(),
-            cookies=self._get_cookies()
-        )
-        resp.raise_for_status()
-        return resp.json().get("data", [])
+        return await self._request("GET", "/nodes")
 
     async def get_node_status(self, node: str = "pve") -> Dict[str, Any]:
-        await self._ensure_auth()
-        resp = await self.client.get(
-            f"{BASE_URL}/nodes/{node}/status",
-            headers=self._get_headers(),
-            cookies=self._get_cookies()
-        )
-        resp.raise_for_status()
-        return resp.json().get("data", {})
+        return await self._request("GET", f"/nodes/{node}/status")
 
-    async def get_node_vms(self, node: str = "pve") -> List[Dict[str, Any]]:
-        await self._ensure_auth()
-        resp = await self.client.get(
-            f"{BASE_URL}/nodes/{node}/qemu",
-            headers=self._get_headers(),
-            cookies=self._get_cookies()
-        )
-        resp.raise_for_status()
-        return resp.json().get("data", [])
+    async def get_rrd_data(self, node: str = "pve", timeframe: str = "hour") -> List[Dict[str, Any]]:
+        return await self._request("GET", f"/nodes/{node}/rrddata", params={"timeframe": timeframe})
+
+    # QEMU / KVM Virtual Machines
+    async def get_vms(self, node: str = "pve") -> List[Dict[str, Any]]:
+        return await self._request("GET", f"/nodes/{node}/qemu")
 
     async def get_vm_config(self, node: str, vmid: int) -> Dict[str, Any]:
-        await self._ensure_auth()
-        resp = await self.client.get(
-            f"{BASE_URL}/nodes/{node}/qemu/{vmid}/config",
-            headers=self._get_headers(),
-            cookies=self._get_cookies()
-        )
-        resp.raise_for_status()
-        return resp.json().get("data", {})
+        return await self._request("GET", f"/nodes/{node}/qemu/{vmid}/config")
 
-    async def vm_action(self, node: str, vmid: int, action: str) -> Dict[str, Any]:
-        # action: start, stop, shutdown, reboot, reset, suspend, resume
-        await self._ensure_auth()
-        resp = await self.client.post(
-            f"{BASE_URL}/nodes/{node}/qemu/{vmid}/status/{action}",
-            headers=self._get_headers(),
-            cookies=self._get_cookies()
-        )
-        resp.raise_for_status()
-        return resp.json()
+    async def create_vm(
+        self,
+        node: str,
+        vmid: int,
+        name: str,
+        cores: int = 2,
+        memory: int = 2048,
+        disk_gb: int = 20,
+        iso: Optional[str] = None,
+        storage: str = "local-lvm",
+        sockets: int = 1,
+        net_bridge: str = "vmbr0",
+        agent: bool = True
+    ) -> str:
+        payload: Dict[str, Any] = {
+            "vmid": vmid,
+            "name": name,
+            "cores": cores,
+            "sockets": sockets,
+            "memory": memory,
+            "scsihw": "virtio-scsi-pci",
+            "scsi0": f"{storage}:{disk_gb},discard=on,ssd=1",
+            "net0": f"virtio,bridge={net_bridge},firewall=1",
+            "ostype": "l26",
+            "boot": "order=scsi0;ide2;net0"
+        }
+        if iso:
+            payload["ide2"] = f"{iso},media=cdrom"
+        if agent:
+            payload["agent"] = "enabled=1"
 
-    async def get_next_vmid(self) -> int:
-        await self._ensure_auth()
-        resp = await self.client.get(
-            f"{BASE_URL}/cluster/nextid",
-            headers=self._get_headers(),
-            cookies=self._get_cookies()
-        )
-        resp.raise_for_status()
-        return int(resp.json().get("data", 100))
+        return await self._request("POST", f"/nodes/{node}/qemu", data=payload)
 
-    async def create_vm(self, node: str, params: Dict[str, Any]) -> Dict[str, Any]:
-        await self._ensure_auth()
-        resp = await self.client.post(
-            f"{BASE_URL}/nodes/{node}/qemu",
-            headers=self._get_headers(),
-            cookies=self._get_cookies(),
-            data=params
-        )
-        resp.raise_for_status()
-        return resp.json()
+    async def vm_action(self, node: str, vmid: int, action: str) -> str:
+        # actions: start, stop, shutdown, reboot, reset, suspend, resume
+        return await self._request("POST", f"/nodes/{node}/qemu/{vmid}/status/{action}")
 
-    async def delete_vm(self, node: str, vmid: int) -> Dict[str, Any]:
-        await self._ensure_auth()
-        resp = await self.client.delete(
-            f"{BASE_URL}/nodes/{node}/qemu/{vmid}",
-            headers=self._get_headers(),
-            cookies=self._get_cookies()
-        )
-        resp.raise_for_status()
-        return resp.json()
+    async def delete_vm(self, node: str, vmid: int, purge: bool = True) -> str:
+        return await self._request("DELETE", f"/nodes/{node}/qemu/{vmid}", params={"purge": 1 if purge else 0})
 
-    async def get_storages(self, node: str = "pve") -> List[Dict[str, Any]]:
-        await self._ensure_auth()
-        resp = await self.client.get(
-            f"{BASE_URL}/nodes/{node}/storage",
-            headers=self._get_headers(),
-            cookies=self._get_cookies()
-        )
-        resp.raise_for_status()
-        return resp.json().get("data", [])
+    # LXC Micro-Containers
+    async def get_lxcs(self, node: str = "pve") -> List[Dict[str, Any]]:
+        return await self._request("GET", f"/nodes/{node}/lxc")
 
-    async def get_iso_images(self, node: str = "pve", storage: str = "local") -> List[Dict[str, Any]]:
-        await self._ensure_auth()
-        resp = await self.client.get(
-            f"{BASE_URL}/nodes/{node}/storage/{storage}/content",
-            headers=self._get_headers(),
-            cookies=self._get_cookies(),
-            params={"content": "iso"}
-        )
-        resp.raise_for_status()
-        return resp.json().get("data", [])
+    async def get_lxc_templates(self, node: str = "pve", storage: str = "local") -> List[Dict[str, Any]]:
+        content = await self._request("GET", f"/nodes/{node}/storage/{storage}/content", params={"content": "vztmpl"})
+        return content
 
-    async def get_vnc_proxy(self, node: str, vmid: int) -> Dict[str, Any]:
-        await self._ensure_auth()
-        resp = await self.client.post(
-            f"{BASE_URL}/nodes/{node}/qemu/{vmid}/vncproxy",
-            headers=self._get_headers(),
-            cookies=self._get_cookies(),
-            data={"websocket": 1}
-        )
-        resp.raise_for_status()
-        return resp.json().get("data", {})
+    async def create_lxc(
+        self,
+        node: str,
+        vmid: int,
+        hostname: str,
+        cores: int = 1,
+        memory: int = 512,
+        disk_gb: int = 8,
+        template: str = "local:vztmpl/alpine-3.22-default_20250617_amd64.tar.xz",
+        password: str = "TotoLXC2026!",
+        storage: str = "local-lvm",
+        unprivileged: int = 1,
+        net_bridge: str = "vmbr0",
+        start_after_create: bool = True
+    ) -> str:
+        payload: Dict[str, Any] = {
+            "vmid": vmid,
+            "hostname": hostname,
+            "ostemplate": template,
+            "cores": cores,
+            "memory": memory,
+            "swap": 512,
+            "rootfs": f"{storage}:{disk_gb}",
+            "net0": f"name=eth0,bridge={net_bridge},ip=dhcp,firewall=1",
+            "password": password,
+            "unprivileged": unprivileged,
+            "start": 1 if start_after_create else 0
+        }
+        return await self._request("POST", f"/nodes/{node}/lxc", data=payload)
 
-proxmox_api = ProxmoxClient()
+    async def lxc_action(self, node: str, vmid: int, action: str) -> str:
+        # actions: start, stop, shutdown, reboot
+        return await self._request("POST", f"/nodes/{node}/lxc/{vmid}/status/{action}")
+
+    async def delete_lxc(self, node: str, vmid: int, purge: bool = True) -> str:
+        return await self._request("DELETE", f"/nodes/{node}/lxc/{vmid}", params={"purge": 1 if purge else 0})
+
+    # Live Snapshots (KVM & LXC)
+    async def get_snapshots(self, node: str, vmid: int, is_lxc: bool = False) -> List[Dict[str, Any]]:
+        endpoint = f"/nodes/{node}/lxc/{vmid}/snapshot" if is_lxc else f"/nodes/{node}/qemu/{vmid}/snapshot"
+        return await self._request("GET", endpoint)
+
+    async def create_snapshot(self, node: str, vmid: int, snapname: str, description: str = "", vmstate: bool = True, is_lxc: bool = False) -> str:
+        endpoint = f"/nodes/{node}/lxc/{vmid}/snapshot" if is_lxc else f"/nodes/{node}/qemu/{vmid}/snapshot"
+        payload: Dict[str, Any] = {
+            "snapname": snapname,
+            "description": description
+        }
+        if not is_lxc and vmstate:
+            payload["vmstate"] = 1
+        return await self._request("POST", endpoint, data=payload)
+
+    async def rollback_snapshot(self, node: str, vmid: int, snapname: str, is_lxc: bool = False) -> str:
+        endpoint = f"/nodes/{node}/lxc/{vmid}/snapshot/{snapname}/rollback" if is_lxc else f"/nodes/{node}/qemu/{vmid}/snapshot/{snapname}/rollback"
+        return await self._request("POST", endpoint)
+
+    async def delete_snapshot(self, node: str, vmid: int, snapname: str, is_lxc: bool = False) -> str:
+        endpoint = f"/nodes/{node}/lxc/{vmid}/snapshot/{snapname}" if is_lxc else f"/nodes/{node}/qemu/{vmid}/snapshot/{snapname}"
+        return await self._request("DELETE", endpoint)
+
+    # VNC & Console
+    async def get_vnc_ticket(self, node: str, vmid: int, is_lxc: bool = False) -> Dict[str, Any]:
+        endpoint = f"/nodes/{node}/lxc/{vmid}/vncproxy" if is_lxc else f"/nodes/{node}/qemu/{vmid}/vncproxy"
+        return await self._request("POST", endpoint, data={"websocket": 1})
+
+    # Storage & ISOs
+    async def get_storage_list(self, node: str = "pve") -> List[Dict[str, Any]]:
+        return await self._request("GET", f"/nodes/{node}/storage")
+
+    async def get_isos(self, node: str = "pve", storage: str = "local") -> List[Dict[str, Any]]:
+        content = await self._request("GET", f"/nodes/{node}/storage/{storage}/content", params={"content": "iso"})
+        return content
+
+    async def download_iso_from_url(self, node: str, storage: str, url: str, filename: str) -> str:
+        payload = {
+            "content": "iso",
+            "filename": filename,
+            "url": url,
+            "verify-certificates": 0
+        }
+        return await self._request("POST", f"/nodes/{node}/storage/{storage}/download-url", data=payload)
+
+proxmox_client = ProxmoxClient()

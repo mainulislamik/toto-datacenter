@@ -1,4 +1,4 @@
-// Central API client for Toto Datacenter Control Panel
+// Central API client for Toto Datacenter Control Panel (Enterprise v2.0)
 
 const API_BASE = '/api';
 
@@ -15,85 +15,96 @@ export function setAuthToken(token) {
 }
 
 export function getCurrentUser() {
-  const userJson = localStorage.getItem('toto_auth_user');
-  if (!userJson) return null;
+  const u = localStorage.getItem('toto_current_user');
   try {
-    return JSON.parse(userJson);
-  } catch {
+    return u ? JSON.parse(u) : null;
+  } catch (e) {
     return null;
   }
 }
 
 export function setCurrentUser(user) {
   if (user) {
-    localStorage.setItem('toto_auth_user', JSON.stringify(user));
+    localStorage.setItem('toto_current_user', JSON.stringify(user));
   } else {
-    localStorage.removeItem('toto_auth_user');
+    localStorage.removeItem('toto_current_user');
   }
 }
 
-async function request(endpoint, options = {}) {
+async function request(path, options = {}) {
   const token = getAuthToken();
   const headers = {
     'Content-Type': 'application/json',
-    ...(token ? { 'Authorization': `Bearer ${token}` } : {}),
-    ...options.headers,
+    ...(options.headers || {}),
   };
 
-  const response = await fetch(`${API_BASE}${endpoint}`, {
+  if (token) {
+    headers['Authorization'] = `Bearer ${token}`;
+  }
+
+  const res = await fetch(`${API_BASE}${path}`, {
     ...options,
     headers,
   });
 
-  if (response.status === 401) {
-    // Session expired
+  if (res.status === 401) {
     setAuthToken(null);
     setCurrentUser(null);
     window.dispatchEvent(new CustomEvent('toto:auth-expired'));
+    throw new Error('Session expired. Please log in again.');
   }
 
-  const data = await response.json().catch(() => ({}));
-  if (!response.ok) {
-    throw new Error(data.detail || data.message || `Request failed with status ${response.status}`);
+  const data = await res.json().catch(() => ({}));
+
+  if (!res.ok) {
+    throw new Error(data.detail || data.message || `Request failed with status ${res.status}`);
   }
+
   return data;
 }
 
 export const api = {
-  login: (username, password) => request('/auth/login', {
-    method: 'POST',
-    body: JSON.stringify({ username, password }),
-  }),
+  // Auth
+  login: (username, password) => request('/auth/login', { method: 'POST', body: JSON.stringify({ username, password }) }),
   getMe: () => request('/auth/me'),
-  getDatacenterOverview: () => request('/datacenter/overview'),
+
+  // Datacenter & Telemetry
+  getOverview: () => request('/datacenter/overview'),
+  getRRDTelemetry: (timeframe = 'hour') => request(`/telemetry/rrd?timeframe=${timeframe}`),
+
+  // Virtual Machines (KVM)
   getVMs: () => request('/vms'),
-  createVM: (vmData) => request('/vms/create', {
-    method: 'POST',
-    body: JSON.stringify(vmData),
-  }),
-  vmAction: (vmid, action, node = 'pve') => request(`/vms/${vmid}/action?action=${action}&node=${node}`, {
-    method: 'POST',
-  }),
-  getVMConsole: (vmid, node = 'pve') => request(`/vms/${vmid}/console?node=${node}`),
-  deleteVM: (vmid, node = 'pve') => request(`/vms/${vmid}?node=${node}`, {
-    method: 'DELETE',
-  }),
+  createVM: (payload) => request('/vms/create', { method: 'POST', body: JSON.stringify(payload) }),
+  vmAction: (vmid, action) => request(`/vms/${vmid}/action?action=${action}`, { method: 'POST' }),
+  deleteVM: (vmid) => request(`/vms/${vmid}`, { method: 'DELETE' }),
+  getVMConsole: (vmid) => request(`/vms/${vmid}/console`),
+
+  // LXC Micro-Containers
+  getLXCs: () => request('/lxc'),
+  getLXCTemplates: () => request('/lxc/templates'),
+  createLXC: (payload) => request('/lxc/create', { method: 'POST', body: JSON.stringify(payload) }),
+  lxcAction: (vmid, action) => request(`/lxc/${vmid}/action?action=${action}`, { method: 'POST' }),
+  deleteLXC: (vmid) => request(`/lxc/${vmid}`, { method: 'DELETE' }),
+
+  // Live Snapshots
+  getSnapshots: (vmid, is_lxc = false) => request(`/snapshots/${vmid}?is_lxc=${is_lxc}`),
+  createSnapshot: (vmid, payload) => request(`/snapshots/${vmid}`, { method: 'POST', body: JSON.stringify(payload) }),
+  rollbackSnapshot: (vmid, snapname, is_lxc = false) => request(`/snapshots/${vmid}/rollback/${snapname}?is_lxc=${is_lxc}`, { method: 'POST' }),
+  deleteSnapshot: (vmid, snapname, is_lxc = false) => request(`/snapshots/${vmid}/${snapname}?is_lxc=${is_lxc}`, { method: 'DELETE' }),
+
+  // App Marketplace
+  getMarketplaceApps: () => request('/marketplace/apps'),
+  deployMarketplaceApp: (payload) => request('/marketplace/deploy', { method: 'POST', body: JSON.stringify(payload) }),
+
+  // Storage & ISO
   getISOs: () => request('/storage/isos'),
-  uploadISOFromURL: (url, filename) => request('/storage/upload-url', {
-    method: 'POST',
-    body: JSON.stringify({ url, filename }),
-  }),
+  uploadISOUtil: (payload) => request('/storage/upload-url', { method: 'POST', body: JSON.stringify(payload) }),
+
+  // Multi-Tenancy & Users
   getUsers: () => request('/users'),
-  createUser: (userData) => request('/users', {
-    method: 'POST',
-    body: JSON.stringify(userData),
-  }),
-  updateUser: (userId, userData) => request(`/users/${userId}`, {
-    method: 'PUT',
-    body: JSON.stringify(userData),
-  }),
-  deleteUser: (userId) => request(`/users/${userId}`, {
-    method: 'DELETE',
-  }),
+  createUser: (payload) => request('/users', { method: 'POST', body: JSON.stringify(payload) }),
+  deleteUser: (userId) => request(`/users/${userId}`, { method: 'DELETE' }),
+
+  // Git-Ops & Bare-metal
   getGitStatus: () => request('/system/git-status'),
 };

@@ -9,86 +9,96 @@ import {
   ShieldCheck, 
   Activity, 
   User as UserIcon,
-  ExternalLink
+  Zap,
+  ShoppingBag,
+  Cpu
 } from 'lucide-react';
 
 export default function Navbar({ activeTab, setActiveTab, user, onLogout }) {
   const isSuperAdmin = user?.role === 'super_admin';
-  const isTenantAdmin = user?.role === 'tenant_admin' || isSuperAdmin;
 
   const navItems = [
-    { id: 'overview', label: 'Datacenter Overview', icon: Activity },
-    { id: 'vms', label: 'Virtual Machines', icon: Layers },
-    { id: 'storage', label: 'Storage & ISOs', icon: HardDrive },
-    ...(isTenantAdmin ? [{ id: 'users', label: 'User & Quotas', icon: Users }] : []),
-    { id: 'gitops', label: 'Git-Ops & Bare-Metal ISO', icon: GitBranch },
+    { id: 'overview', label: 'Cluster Overview', icon: Activity },
+    { id: 'vms', label: 'KVM Virtual Machines', icon: Server },
+    { id: 'lxc', label: 'LXC Containers', icon: Zap },
+    { id: 'marketplace', label: 'App Marketplace', icon: ShoppingBag },
+    { id: 'storage', label: 'Storage & ISO Vault', icon: HardDrive },
+    ...(isSuperAdmin ? [{ id: 'users', label: 'Users & RBAC Quotas', icon: Users }] : []),
+    { id: 'gitops', label: '1-Click ISO & Git-Ops', icon: GitBranch },
   ];
 
   return (
-    <header className="bg-white border-b border-slate-200 sticky top-0 z-30 shadow-sm">
+    <header className="bg-white border-b border-slate-200 sticky top-0 z-40 shadow-xs">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="flex items-center justify-between h-16">
-          {/* Logo & Platform Name */}
-          <div className="flex items-center space-x-3">
-            <div className="w-10 h-10 rounded-lg bg-sky-700 flex items-center justify-center text-white font-bold shadow-sm">
-              <Server className="w-5 h-5" />
-            </div>
-            <div>
-              <div className="flex items-center space-x-2">
-                <span className="font-bold text-slate-900 text-lg tracking-tight">TOTO CLOUD OS</span>
-                <span className="text-[10px] bg-sky-100 text-sky-800 font-semibold px-2 py-0.5 rounded border border-sky-200">v1.0-ENTERPRISE</span>
+          {/* Brand Logo & Node Status */}
+          <div className="flex items-center space-x-6">
+            <div className="flex items-center space-x-3 cursor-pointer" onClick={() => setActiveTab('overview')}>
+              <div className="w-10 h-10 rounded-xl bg-slate-900 text-white flex items-center justify-center shadow-md border border-slate-800">
+                <Server className="w-5 h-5 text-sky-400" />
               </div>
-              <p className="text-xs text-slate-500 font-medium">Toto Company Datacenter Orchestrator</p>
-            </div>
-          </div>
-
-          {/* User Info & Actions */}
-          <div className="flex items-center space-x-4">
-            {/* Proxmox Native GUI direct link */}
-            <a 
-              href="https://127.0.0.1:8006" 
-              target="_blank" 
-              rel="noreferrer"
-              className="hidden md:inline-flex items-center space-x-1 text-xs font-medium text-slate-600 bg-slate-100 hover:bg-slate-200 border border-slate-300 px-2.5 py-1.5 rounded-md transition"
-              title="Open Native Proxmox VE Web GUI"
-            >
-              <span>Hypervisor Native GUI</span>
-              <ExternalLink className="w-3 h-3" />
-            </a>
-
-            {/* User Profile Card */}
-            <div className="flex items-center space-x-3 bg-slate-50 border border-slate-200 px-3 py-1.5 rounded-lg">
-              <div className="w-7 h-7 rounded-full bg-slate-800 text-white flex items-center justify-center text-xs font-bold">
-                {user?.username?.charAt(0)?.toUpperCase() || 'U'}
-              </div>
-              <div className="text-left">
-                <div className="flex items-center space-x-1.5">
-                  <span className="text-xs font-bold text-slate-900">{user?.username}</span>
-                  <span className={`text-[10px] font-semibold px-1.5 py-0.2 rounded ${
-                    user?.role === 'super_admin' ? 'bg-amber-100 text-amber-900 border border-amber-300' :
-                    user?.role === 'tenant_admin' ? 'bg-blue-100 text-blue-900 border border-blue-300' :
-                    'bg-slate-200 text-slate-800'
-                  }`}>
-                    {user?.role === 'super_admin' ? 'Super Admin' : user?.role === 'tenant_admin' ? 'Tenant Admin' : 'User'}
+              <div>
+                <div className="flex items-center space-x-2">
+                  <span className="font-black text-base text-slate-900 tracking-tight">TOTO CLOUD</span>
+                  <span className="text-[10px] font-black uppercase tracking-wider px-1.5 py-0.5 bg-sky-100 text-sky-800 rounded border border-sky-200">
+                    v2.0 Enterprise
                   </span>
                 </div>
-                <p className="text-[11px] text-slate-500 truncate max-w-[140px]">{user?.company || 'Datacenter'}</p>
+                <div className="flex items-center space-x-1.5 text-[11px] text-slate-500 font-medium">
+                  <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
+                  <span>DC-1 • Second SSD (240GB)</span>
+                </div>
               </div>
             </div>
 
-            {/* Logout Button */}
+            {/* Navigation Tabs */}
+            <nav className="hidden xl:flex items-center space-x-1">
+              {navItems.map((item) => {
+                const Icon = item.icon;
+                const isActive = activeTab === item.id;
+                return (
+                  <button
+                    key={item.id}
+                    onClick={() => setActiveTab(item.id)}
+                    className={`inline-flex items-center space-x-2 px-3 py-2 rounded-xl text-xs font-bold transition ${
+                      isActive
+                        ? 'bg-slate-900 text-white shadow-sm'
+                        : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'
+                    }`}
+                  >
+                    <Icon className={`w-4 h-4 ${isActive ? 'text-sky-400' : 'text-slate-400'}`} />
+                    <span>{item.label}</span>
+                  </button>
+                );
+              })}
+            </nav>
+          </div>
+
+          {/* User Profile & Actions */}
+          <div className="flex items-center space-x-3">
+            <div className="hidden sm:flex flex-col text-right">
+              <span className="text-xs font-black text-slate-800">{user?.username}</span>
+              <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">
+                {isSuperAdmin ? 'Super Administrator' : user?.company || 'Tenant User'}
+              </span>
+            </div>
+
+            <div className="w-9 h-9 rounded-xl bg-slate-100 border border-slate-200 flex items-center justify-center text-slate-700 font-bold">
+              {isSuperAdmin ? <ShieldCheck className="w-5 h-5 text-sky-600" /> : <UserIcon className="w-4 h-4" />}
+            </div>
+
             <button
               onClick={onLogout}
-              className="inline-flex items-center space-x-1 text-xs font-medium text-rose-700 bg-rose-50 hover:bg-rose-100 border border-rose-200 px-3 py-1.5 rounded-md transition"
+              title="Sign Out"
+              className="p-2 rounded-xl text-slate-400 hover:text-rose-600 hover:bg-rose-50 border border-transparent hover:border-rose-200 transition"
             >
-              <LogOut className="w-3.5 h-3.5" />
-              <span className="hidden sm:inline">Logout</span>
+              <LogOut className="w-4 h-4" />
             </button>
           </div>
         </div>
 
-        {/* Navigation Tabs */}
-        <nav className="flex space-x-1 sm:space-x-4 border-t border-slate-100 overflow-x-auto py-1">
+        {/* Mobile Navigation Scrollbar */}
+        <div className="flex xl:hidden overflow-x-auto py-2 space-x-1 border-t border-slate-100 no-scrollbar">
           {navItems.map((item) => {
             const Icon = item.icon;
             const isActive = activeTab === item.id;
@@ -96,18 +106,18 @@ export default function Navbar({ activeTab, setActiveTab, user, onLogout }) {
               <button
                 key={item.id}
                 onClick={() => setActiveTab(item.id)}
-                className={`inline-flex items-center space-x-2 px-3.5 py-2.5 text-xs sm:text-sm font-semibold border-b-2 transition whitespace-nowrap ${
+                className={`inline-flex items-center space-x-1.5 px-3 py-1.5 rounded-lg text-xs font-bold whitespace-nowrap transition ${
                   isActive
-                    ? 'border-sky-700 text-sky-800 bg-sky-50/50'
-                    : 'border-transparent text-slate-600 hover:text-slate-900 hover:border-slate-300'
+                    ? 'bg-slate-900 text-white'
+                    : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'
                 }`}
               >
-                <Icon className={`w-4 h-4 ${isActive ? 'text-sky-700' : 'text-slate-400'}`} />
+                <Icon className="w-3.5 h-3.5" />
                 <span>{item.label}</span>
               </button>
             );
           })}
-        </nav>
+        </div>
       </div>
     </header>
   );

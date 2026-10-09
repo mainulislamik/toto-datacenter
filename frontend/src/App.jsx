@@ -2,17 +2,21 @@ import React, { useState, useEffect } from 'react';
 import Navbar from './components/Navbar';
 import OverviewView from './components/OverviewView';
 import VMListView from './components/VMListView';
+import LXCHubView from './components/LXCHubView';
+import MarketplaceView from './components/MarketplaceView';
 import UserManagementView from './components/UserManagementView';
 import StorageView from './components/StorageView';
 import GitOpsView from './components/GitOpsView';
 import VNCConsoleModal from './components/VNCConsoleModal';
+import SnapshotModal from './components/SnapshotModal';
 import LoginView from './components/LoginView';
-import { getCurrentUser, setAuthToken, setCurrentUser, api } from './api';
+import { getCurrentUser, setAuthToken, setCurrentUser } from './api';
 
 export default function App() {
   const [user, setUser] = useState(getCurrentUser());
   const [activeTab, setActiveTab] = useState('overview');
   const [consoleModal, setConsoleModal] = useState({ isOpen: false, vmid: null, vmName: '' });
+  const [snapshotModal, setSnapshotModal] = useState({ isOpen: false, vmid: null, name: '', isLXC: false });
 
   useEffect(() => {
     const handleAuthExpired = () => {
@@ -41,12 +45,20 @@ export default function App() {
     setConsoleModal({ isOpen: false, vmid: null, vmName: '' });
   };
 
+  const handleOpenSnapshots = (vmid, name, isLXC = false) => {
+    setSnapshotModal({ isOpen: true, vmid, name, isLXC });
+  };
+
+  const handleCloseSnapshots = () => {
+    setSnapshotModal({ isOpen: false, vmid: null, name: '', isLXC: false });
+  };
+
   if (!user) {
     return <LoginView onLoginSuccess={handleLoginSuccess} />;
   }
 
   return (
-    <div className="min-h-screen bg-slate-50 flex flex-col">
+    <div className="min-h-screen bg-slate-50 flex flex-col font-sans">
       <Navbar
         activeTab={activeTab}
         setActiveTab={setActiveTab}
@@ -59,7 +71,20 @@ export default function App() {
           <OverviewView onNavigate={setActiveTab} user={user} />
         )}
         {activeTab === 'vms' && (
-          <VMListView onOpenConsole={handleOpenConsole} user={user} />
+          <VMListView 
+            onOpenConsole={handleOpenConsole} 
+            onOpenSnapshots={handleOpenSnapshots}
+            user={user} 
+          />
+        )}
+        {activeTab === 'lxc' && (
+          <LXCHubView 
+            onOpenConsole={handleOpenConsole}
+            onOpenSnapshots={handleOpenSnapshots}
+          />
+        )}
+        {activeTab === 'marketplace' && (
+          <MarketplaceView onDeployed={() => setActiveTab('lxc')} />
         )}
         {activeTab === 'storage' && <StorageView />}
         {activeTab === 'users' && <UserManagementView currentUser={user} />}
@@ -70,10 +95,10 @@ export default function App() {
       <footer className="bg-white border-t border-slate-200 py-4 mt-auto">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 flex flex-col sm:flex-row items-center justify-between text-xs text-slate-500 gap-2">
           <div>
-            <span className="font-bold text-slate-800">Toto Company Datacenter</span> • High-Performance Virtual Infrastructure
+            <span className="font-black text-slate-800">TOTO CLOUD OS</span> • Enterprise Private Datacenter v2.0
           </div>
           <div>
-            Proxmox VE 8.4 • Second SSD (240GB) • KVM Hardware Engine
+            Proxmox VE 8.4 • Second SSD (240GB) • KVM Hardware & LXC Micro-Containers
           </div>
         </div>
       </footer>
@@ -84,6 +109,16 @@ export default function App() {
           vmid={consoleModal.vmid}
           vmName={consoleModal.vmName}
           onClose={handleCloseConsole}
+        />
+      )}
+
+      {/* Live Snapshot Manager Modal */}
+      {snapshotModal.isOpen && (
+        <SnapshotModal
+          vmid={snapshotModal.vmid}
+          name={snapshotModal.name}
+          isLXC={snapshotModal.isLXC}
+          onClose={handleCloseSnapshots}
         />
       )}
     </div>
