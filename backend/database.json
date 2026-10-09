@@ -1,0 +1,55 @@
+{
+  "users": [
+    {
+      "id": "usr_admin",
+      "username": "imon",
+      "email": "imon@toto-datacenter.local",
+      "hashed_password": "$2b$12$7jpSpRICSWnYodCbZMxaLuHos4DC2gLnRLxcIIXTef.nBSB0FjYOm",
+      "role": "super_admin",
+      "company": "Toto Company Datacenter",
+      "created_at": "2026-10-09T00:00:00Z",
+      "quota": {
+        "max_vms": 50,
+        "max_cores": 64,
+        "max_ram_mb": 131072,
+        "max_disk_gb": 1024
+      },
+      "allowed_vmids": []
+    },
+    {
+      "id": "usr_dev",
+      "username": "developer1",
+      "email": "dev1@toto-datacenter.local",
+      "hashed_password": "$2b$12$dJJxMydlS.o4y/0je4Evqu9L4ocN3rO4SW9VJev7j8790y3Tyzw5K",
+      "role": "user",
+      "company": "Client Alpha",
+      "created_at": "2026-10-09T00:00:00Z",
+      "quota": {
+        "max_vms": 2,
+        "max_cores": 4,
+        "max_ram_mb": 4096,
+        "max_disk_gb": 50
+      },
+      "allowed_vmids": [
+        100,
+        101
+      ]
+    },
+    {
+      "id": "usr_9bf9e8fb",
+      "username": "client_alpha",
+      "email": "alpha@client.com",
+      "hashed_password": "$2b$12$mNiUucwR/22R73maDf6LMOitZID34VLIpyZlxb5U79KSsvWSgnTFW",
+      "role": "user",
+      "company": "Alpha Tech Solutions",
+      "created_at": "2026-10-09T00:00:00Z",
+      "quota": {
+        "max_vms": 3,
+        "max_cores": 4,
+        "max_ram_mb": 4096,
+        "max_disk_gb": 60
+      },
+      "allowed_vmids": []
+    }
+  ]
+}

@@ -1,0 +1,18 @@
+# Toto Company Datacenter - Git Ignore
+
+# Python
+backend/venv/
+__pycache__/
+*.py[cod]
+*.sqlite3
+*.log
+*.pid
+
+# Node / Frontend
+frontend/node_modules/
+frontend/dist/
+.env.local
+
+# ISO files
+iso-builder/*.iso
+iso-builder/*.qcow2

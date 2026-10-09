@@ -1,0 +1,23 @@
+# Toto Company Datacenter - Automated Installer Configuration
+# Specification: Proxmox VE 8.x Automated Installation Answer File
+
+[global]
+country = "bd"
+keyboard = "en-us"
+timezone = "Asia/Dhaka"
+fqdn = "dc1.toto-datacenter.lan"
+mailto = "admin@toto-datacenter.local"
+root_password = "ProxmoxAdmin2026!"
+reboot_mode = "reboot"
+
+[network]
+source = "from-dhcp"
+
+[disk-setup]
+filesystem = "ext4"
+disk_list = ["/dev/sda", "/dev/nvme0n1", "/dev/vda"]
+filter_match = "any"
+
+[first-boot]
+source = "from-iso"
+ordering = "after-network"
