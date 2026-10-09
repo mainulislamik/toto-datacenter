@@ -1,27 +1,30 @@
 import os
 import uuid
+import asyncio
+import subprocess
 from typing import List, Optional, Dict, Any
-from fastapi import FastAPI, Depends, HTTPException, status, Header
+from fastapi import FastAPI, Depends, HTTPException, status, Header, UploadFile, File, Form
 from fastapi.middleware.cors import CORSMiddleware
-from pydantic import BaseModel, Field
-import uvicorn
+from pydantic import BaseModel
 
 from auth import (
-    authenticate_user, 
-    create_access_token, 
-    decode_token, 
-    get_user_by_username, 
-    get_all_users, 
-    save_user, 
+    get_user_by_username,
+    authenticate_user,
+    create_access_token,
+    decode_token,
+    get_all_users,
+    save_user,
     delete_user_by_id,
-    hash_password
+    hash_password,
+    UserQuota
 )
 from proxmox_client import proxmox_client
+from iso_analyzer import analyze_iso, parse_iso_header_bytes
 
 app = FastAPI(
-    title="Toto Company Datacenter Orchestration Engine",
+    title="Toto Datacenter API Engine",
     version="2.0.0",
-    description="Enterprise Cloud Hypervisor REST API & Multi-Tenant Control Engine"
+    description="Enterprise REST API for Toto Company Datacenter with Intelligent ISO Classifier and Multi-Tenancy"
 )
 
 app.add_middleware(
@@ -32,101 +35,29 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# ------------------------------------------------------------------------------
-# Pydantic Schemas
-# ------------------------------------------------------------------------------
-class LoginRequest(BaseModel):
-    username: str
-    password: str
-
-class TokenResponse(BaseModel):
-    access_token: str
-    token_type: str = "bearer"
-    user: Dict[str, Any]
-
-class QuotaSchema(BaseModel):
-    max_vms: int = 5
-    max_cores: int = 8
-    max_ram_mb: int = 8192
-    max_disk_gb: int = 100
-
-class UserCreate(BaseModel):
-    username: str
-    email: str
-    password: str
-    role: str = "user"
-    company: str = "Client Organization"
-    quota: QuotaSchema = Field(default_factory=QuotaSchema)
-
-class VMCreateRequest(BaseModel):
-    vmid: int
-    name: str
-    cores: int = 2
-    memory: int = 2048
-    disk_gb: int = 20
-    iso: Optional[str] = None
-    storage: str = "local-lvm"
-    node: str = "pve"
-
-class LXCCreateRequest(BaseModel):
-    vmid: int
-    hostname: str
-    cores: int = 1
-    memory: int = 512
-    disk_gb: int = 8
-    template: str
-    password: str = "TotoLXC2026!"
-    storage: str = "local-lvm"
-    unprivileged: int = 1
-    node: str = "pve"
-
-class SnapshotCreateRequest(BaseModel):
-    snapname: str
-    description: str = ""
-    vmstate: bool = True
-    is_lxc: bool = False
-
-class MarketplaceDeployRequest(BaseModel):
-    app_id: str
-    hostname: str
-    cores: int = 2
-    memory: int = 2048
-    disk_gb: int = 15
-    password: str = "TotoAdmin2026!"
-    node: str = "pve"
-
-class ISODownloadRequest(BaseModel):
-    url: str
-    filename: Optional[str] = None
-    node: str = "pve"
-    storage: str = "local"
-
-# ------------------------------------------------------------------------------
-# Auth Dependency
-# ------------------------------------------------------------------------------
+# Dependency: Get Current Authenticated User
 async def get_current_user(authorization: Optional[str] = Header(None)) -> Dict[str, Any]:
     if not authorization or not authorization.startswith("Bearer "):
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Missing or malformed Authorization header"
+            detail="Authentication token required"
         )
     token = authorization.split(" ")[1]
     payload = decode_token(token)
-    if not payload:
+    if not payload or "sub" not in payload:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Invalid or expired token"
         )
-    username = payload.get("sub")
-    user = get_user_by_username(username)
+    user = get_user_by_username(payload["sub"])
     if not user:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="User not found"
+            detail="User no longer exists"
         )
     return user
 
-async def require_super_admin(current_user: Dict[str, Any] = Depends(get_current_user)) -> Dict[str, Any]:
+async def require_admin(current_user: Dict[str, Any] = Depends(get_current_user)) -> Dict[str, Any]:
     if current_user.get("role") != "super_admin":
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
@@ -134,10 +65,319 @@ async def require_super_admin(current_user: Dict[str, Any] = Depends(get_current
         )
     return current_user
 
-# ------------------------------------------------------------------------------
-# Marketplace Catalog
-# ------------------------------------------------------------------------------
-MARKETPLACE_APPS = [
+# ==============================================================================
+# 1. Health & Datacenter Overview
+# ==============================================================================
+
+@app.get("/api/health")
+async def health_check():
+    return {
+        "status": "healthy",
+        "service": "Toto Datacenter Engine",
+        "version": "2.0.0",
+        "enterprise_tier": "ACTIVE",
+        "ai_iso_classifier": "ENABLED"
+    }
+
+@app.get("/api/datacenter/overview")
+async def get_overview(current_user: Dict[str, Any] = Depends(get_current_user)):
+    try:
+        nodes = await proxmox_client.get_nodes()
+        vms = await proxmox_client.get_vms("pve")
+        lxcs = await proxmox_client.get_lxcs("pve")
+        storage_pools = await proxmox_client.get_storage_status("pve")
+        
+        # Filter for non-admin users
+        if current_user.get("role") != "super_admin":
+            allowed = set(current_user.get("allowed_vmids", []))
+            vms = [v for v in vms if v.get("vmid") in allowed]
+            lxcs = [c for c in lxcs if c.get("vmid") in allowed]
+
+        total_cores = sum(n.get("maxcpu", 0) for n in nodes)
+        total_mem = sum(n.get("maxmem", 0) for n in nodes)
+        used_mem = sum(n.get("mem", 0) for n in nodes)
+        total_disk = sum(n.get("maxdisk", 0) for n in nodes)
+        used_disk = sum(n.get("disk", 0) for n in nodes)
+
+        return {
+            "datacenter_name": "Toto Company Datacenter DC-1",
+            "tier": "Enterprise Private Cloud",
+            "nodes_count": len(nodes),
+            "nodes": nodes,
+            "vms_total": len(vms),
+            "vms_running": sum(1 for v in vms if v.get("status") == "running"),
+            "lxcs_total": len(lxcs),
+            "lxcs_running": sum(1 for c in lxcs if c.get("status") == "running"),
+            "total_cores": total_cores,
+            "memory": {
+                "total_bytes": total_mem,
+                "used_bytes": used_mem,
+                "usage_pct": round((used_mem / total_mem * 100), 1) if total_mem > 0 else 0
+            },
+            "storage": {
+                "total_bytes": total_disk,
+                "used_bytes": used_disk,
+                "usage_pct": round((used_disk / total_disk * 100), 1) if total_disk > 0 else 0
+            },
+            "storage_pools": storage_pools
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+# ==============================================================================
+# 2. Authentication & User Management
+# ==============================================================================
+
+class LoginRequest(BaseModel):
+    username: str
+    password: str
+
+@app.post("/api/auth/login")
+async def login(req: LoginRequest):
+    user = authenticate_user(req.username, req.password)
+    if not user:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid username or password"
+        )
+    access_token = create_access_token(data={
+        "sub": user["username"],
+        "role": user["role"],
+        "id": user["id"]
+    })
+    return {
+        "access_token": access_token,
+        "token_type": "bearer",
+        "user": {
+            "id": user["id"],
+            "username": user["username"],
+            "role": user["role"],
+            "company": user.get("company", ""),
+            "quota": user.get("quota", {})
+        }
+    }
+
+@app.get("/api/users")
+async def list_users(admin_user: Dict[str, Any] = Depends(require_admin)):
+    users = get_all_users()
+    sanitized = []
+    for u in users:
+        u_copy = u.copy()
+        u_copy.pop("hashed_password", None)
+        sanitized.append(u_copy)
+    return sanitized
+
+class CreateUserRequest(BaseModel):
+    username: str
+    email: str
+    password: str
+    role: str = "user"
+    company: str = ""
+    quota: UserQuota
+
+@app.post("/api/users")
+async def create_user(req: CreateUserRequest, admin_user: Dict[str, Any] = Depends(require_admin)):
+    existing = get_user_by_username(req.username)
+    if existing:
+        raise HTTPException(status_code=400, detail="Username already exists")
+    
+    new_user = {
+        "id": f"usr_{uuid.uuid4().hex[:8]}",
+        "username": req.username,
+        "email": req.email,
+        "hashed_password": hash_password(req.password),
+        "role": req.role,
+        "company": req.company,
+        "created_at": "2026-10-10T00:00:00Z",
+        "quota": req.quota.model_dump(),
+        "allowed_vmids": []
+    }
+    save_user(new_user)
+    new_user.pop("hashed_password", None)
+    return new_user
+
+@app.delete("/api/users/{user_id}")
+async def delete_user(user_id: str, admin_user: Dict[str, Any] = Depends(require_admin)):
+    if delete_user_by_id(user_id):
+        return {"status": "deleted", "id": user_id}
+    raise HTTPException(status_code=404, detail="User not found")
+
+# ==============================================================================
+# 3. KVM Virtual Machines Management
+# ==============================================================================
+
+@app.get("/api/vms")
+async def list_vms(current_user: Dict[str, Any] = Depends(get_current_user)):
+    try:
+        vms = await proxmox_client.get_vms("pve")
+        if current_user.get("role") != "super_admin":
+            allowed = set(current_user.get("allowed_vmids", []))
+            vms = [v for v in vms if v.get("vmid") in allowed]
+        return vms
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+class CreateVMRequest(BaseModel):
+    name: str
+    cores: int = 2
+    memory: int = 2048
+    disk_gb: int = 20
+    iso: Optional[str] = None
+    ostype: str = "l26"
+    vmid: Optional[int] = None
+
+@app.post("/api/vms")
+async def create_vm(req: CreateVMRequest, current_user: Dict[str, Any] = Depends(get_current_user)):
+    try:
+        quota = current_user.get("quota", {})
+        if current_user.get("role") != "super_admin":
+            existing_vms = await proxmox_client.get_vms("pve")
+            user_vms = [v for v in existing_vms if v.get("vmid") in current_user.get("allowed_vmids", [])]
+            if len(user_vms) >= quota.get("max_vms", 2):
+                raise HTTPException(status_code=400, detail="VM limit exceeded for your quota")
+            if req.cores > quota.get("max_cores", 4):
+                raise HTTPException(status_code=400, detail="Requested vCPU cores exceed your quota")
+            if req.memory > quota.get("max_ram_mb", 4096):
+                raise HTTPException(status_code=400, detail="Requested RAM exceeds your quota")
+
+        vmid = req.vmid or await proxmox_client.get_next_vmid()
+        res = await proxmox_client.create_vm(
+            node="pve",
+            vmid=vmid,
+            name=req.name,
+            cores=req.cores,
+            memory=req.memory,
+            disk_gb=req.disk_gb,
+            iso=req.iso,
+            ostype=req.ostype
+        )
+        if current_user.get("role") != "super_admin":
+            current_user.setdefault("allowed_vmids", []).append(vmid)
+            save_user(current_user)
+
+        return {"status": "created", "vmid": vmid, "task": res}
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/api/vms/{vmid}/action")
+async def vm_action(vmid: int, action: str, current_user: Dict[str, Any] = Depends(get_current_user)):
+    if current_user.get("role") != "super_admin" and vmid not in current_user.get("allowed_vmids", []):
+        raise HTTPException(status_code=403, detail="Access denied to this VM")
+    try:
+        if action == "start":
+            res = await proxmox_client.start_vm("pve", vmid)
+        elif action == "stop":
+            res = await proxmox_client.stop_vm("pve", vmid)
+        elif action == "reboot":
+            res = await proxmox_client.reboot_vm("pve", vmid)
+        else:
+            raise HTTPException(status_code=400, detail="Invalid action")
+        return {"status": "ok", "action": action, "task": res}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.delete("/api/vms/{vmid}")
+async def delete_vm(vmid: int, current_user: Dict[str, Any] = Depends(get_current_user)):
+    if current_user.get("role") != "super_admin" and vmid not in current_user.get("allowed_vmids", []):
+        raise HTTPException(status_code=403, detail="Access denied to this VM")
+    try:
+        res = await proxmox_client.delete_vm("pve", vmid)
+        return {"status": "deleted", "vmid": vmid, "task": res}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/api/vms/{vmid}/console")
+async def get_vm_console(vmid: int, current_user: Dict[str, Any] = Depends(get_current_user)):
+    if current_user.get("role") != "super_admin" and vmid not in current_user.get("allowed_vmids", []):
+        raise HTTPException(status_code=403, detail="Access denied to this VM")
+    try:
+        vnc_data = await proxmox_client.get_vnc_proxy("pve", vmid)
+        return vnc_data
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+# ==============================================================================
+# 4. LXC Micro-Containers Hub
+# ==============================================================================
+
+@app.get("/api/lxc")
+async def list_lxcs(current_user: Dict[str, Any] = Depends(get_current_user)):
+    try:
+        lxcs = await proxmox_client.get_lxcs("pve")
+        if current_user.get("role") != "super_admin":
+            allowed = set(current_user.get("allowed_vmids", []))
+            lxcs = [c for c in lxcs if c.get("vmid") in allowed]
+        return lxcs
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/api/lxc/templates")
+async def list_lxc_templates(current_user: Dict[str, Any] = Depends(get_current_user)):
+    try:
+        return await proxmox_client.get_lxc_templates("pve", "local")
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+class CreateLXCRequest(BaseModel):
+    hostname: str
+    cores: int = 1
+    memory: int = 512
+    disk_gb: int = 5
+    template: str
+    password: str = "RootPass2026!"
+    vmid: Optional[int] = None
+
+@app.post("/api/lxc")
+async def create_lxc(req: CreateLXCRequest, current_user: Dict[str, Any] = Depends(get_current_user)):
+    try:
+        vmid = req.vmid or await proxmox_client.get_next_vmid()
+        res = await proxmox_client.create_lxc(
+            node="pve",
+            vmid=vmid,
+            hostname=req.hostname,
+            cores=req.cores,
+            memory=req.memory,
+            disk_gb=req.disk_gb,
+            template=req.template,
+            password=req.password
+        )
+        if current_user.get("role") != "super_admin":
+            current_user.setdefault("allowed_vmids", []).append(vmid)
+            save_user(current_user)
+        return {"status": "created", "vmid": vmid, "task": res}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/api/lxc/{vmid}/action")
+async def lxc_action(vmid: int, action: str, current_user: Dict[str, Any] = Depends(get_current_user)):
+    try:
+        if action == "start":
+            res = await proxmox_client.start_lxc("pve", vmid)
+        elif action == "stop":
+            res = await proxmox_client.stop_lxc("pve", vmid)
+        elif action == "reboot":
+            res = await proxmox_client.reboot_lxc("pve", vmid)
+        else:
+            raise HTTPException(status_code=400, detail="Invalid action")
+        return {"status": "ok", "action": action, "task": res}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.delete("/api/lxc/{vmid}")
+async def delete_lxc(vmid: int, current_user: Dict[str, Any] = Depends(get_current_user)):
+    try:
+        res = await proxmox_client.delete_lxc("pve", vmid)
+        return {"status": "deleted", "vmid": vmid, "task": res}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+# ==============================================================================
+# 5. App Marketplace
+# ==============================================================================
+
+MARKETPLACE_CATALOG = [
     {
         "id": "docker-host",
         "name": "Docker & Docker Compose Host",
@@ -200,208 +440,64 @@ MARKETPLACE_APPS = [
     }
 ]
 
-# ------------------------------------------------------------------------------
-# API Endpoints
-# ------------------------------------------------------------------------------
-@app.get("/api/health")
-async def health_check():
+@app.get("/api/marketplace/apps")
+async def get_marketplace_apps():
+    return MARKETPLACE_CATALOG
+
+class DeployAppRequest(BaseModel):
+    app_id: str
+    instance_name: str
+    cores: Optional[int] = None
+    memory: Optional[int] = None
+    disk_gb: Optional[int] = None
+    root_password: str = "AppAdmin2026!"
+
+@app.post("/api/marketplace/deploy")
+async def deploy_marketplace_app(req: DeployAppRequest, current_user: Dict[str, Any] = Depends(get_current_user)):
+    app_meta = next((a for a in MARKETPLACE_CATALOG if a["id"] == req.app_id), None)
+    if not app_meta:
+        raise HTTPException(status_code=404, detail="Marketplace application not found")
+    
+    vmid = await proxmox_client.get_next_vmid()
+    cores = req.cores or app_meta["default_cores"]
+    memory = req.memory or app_meta["default_ram_mb"]
+    disk_gb = req.disk_gb or app_meta["default_disk_gb"]
+
+    res = await proxmox_client.create_lxc(
+        node="pve",
+        vmid=vmid,
+        hostname=req.instance_name,
+        cores=cores,
+        memory=memory,
+        disk_gb=disk_gb,
+        template=app_meta["template"],
+        password=req.root_password
+    )
+    if current_user.get("role") != "super_admin":
+        current_user.setdefault("allowed_vmids", []).append(vmid)
+        save_user(current_user)
+
+    # Start container automatically after creation
+    asyncio.create_task(start_lxc_delayed(vmid))
+
     return {
-        "status": "healthy",
-        "service": "Toto Datacenter Engine",
-        "version": "2.0.0",
-        "enterprise_tier": "ACTIVE"
+        "status": "deployed",
+        "app": app_meta["name"],
+        "vmid": vmid,
+        "task": res
     }
 
-@app.post("/api/auth/login", response_model=TokenResponse)
-async def login(req: LoginRequest):
-    user = authenticate_user(req.username, req.password)
-    if not user:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Invalid credentials"
-        )
-    token = create_access_token({"sub": user["username"], "role": user["role"]})
-    safe_user = {k: v for k, v in user.items() if k != "password_hash"}
-    return {"access_token": token, "user": safe_user}
-
-@app.get("/api/auth/me")
-async def get_me(current_user: Dict[str, Any] = Depends(get_current_user)):
-    return {k: v for k, v in current_user.items() if k != "password_hash"}
-
-# Datacenter Telemetry & Overview
-@app.get("/api/datacenter/overview")
-async def get_datacenter_overview(current_user: Dict[str, Any] = Depends(get_current_user)):
+async def start_lxc_delayed(vmid: int):
+    await asyncio.sleep(5)
     try:
-        nodes = await proxmox_client.get_nodes()
-        vms = await proxmox_client.get_vms("pve")
-        lxcs = await proxmox_client.get_lxcs("pve")
-        storage_list = await proxmox_client.get_storage_list("pve")
+        await proxmox_client.start_lxc("pve", vmid)
+    except Exception:
+        pass
 
-        pve_node = nodes[0] if nodes else {}
-        total_cores = sum(n.get("maxcpu", 0) for n in nodes)
-        total_mem = sum(n.get("maxmem", 0) for n in nodes)
-        used_mem = sum(n.get("mem", 0) for n in nodes)
-        total_disk = sum(n.get("maxdisk", 0) for n in nodes)
-        used_disk = sum(n.get("disk", 0) for n in nodes)
+# ==============================================================================
+# 6. Live Snapshots Engine
+# ==============================================================================
 
-        return {
-            "datacenter_name": "Toto Company Datacenter DC-1",
-            "tier": "Enterprise Private Cloud",
-            "nodes_count": len(nodes),
-            "nodes": nodes,
-            "vms_total": len(vms),
-            "vms_running": len([v for v in vms if v.get("status") == "running"]),
-            "lxcs_total": len(lxcs),
-            "lxcs_running": len([l for l in lxcs if l.get("status") == "running"]),
-            "total_cores": total_cores,
-            "memory": {
-                "total_bytes": total_mem,
-                "used_bytes": used_mem,
-                "usage_pct": round((used_mem / total_mem * 100), 1) if total_mem > 0 else 0
-            },
-            "storage": {
-                "total_bytes": total_disk,
-                "used_bytes": used_disk,
-                "usage_pct": round((used_disk / total_disk * 100), 1) if total_disk > 0 else 0
-            },
-            "storage_pools": storage_list
-        }
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
-
-@app.get("/api/telemetry/rrd")
-async def get_rrd_telemetry(timeframe: str = "hour", current_user: Dict[str, Any] = Depends(get_current_user)):
-    try:
-        return await proxmox_client.get_rrd_data("pve", timeframe=timeframe)
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
-
-# Virtual Machines (KVM)
-@app.get("/api/vms")
-async def list_vms(current_user: Dict[str, Any] = Depends(get_current_user)):
-    try:
-        all_vms = await proxmox_client.get_vms("pve")
-        if current_user.get("role") == "super_admin":
-            return all_vms
-        allowed = current_user.get("allowed_vmids", [])
-        return [vm for vm in all_vms if vm.get("vmid") in allowed]
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
-
-@app.post("/api/vms/create")
-async def create_vm(req: VMCreateRequest, current_user: Dict[str, Any] = Depends(get_current_user)):
-    try:
-        # Check Quota if not super admin
-        if current_user.get("role") != "super_admin":
-            quota = current_user.get("quota", {})
-            user_vms = current_user.get("allowed_vmids", [])
-            if len(user_vms) >= quota.get("max_vms", 5):
-                raise HTTPException(status_code=400, detail="VM creation limit exceeded for your tenant quota.")
-            if req.cores > quota.get("max_cores", 8):
-                raise HTTPException(status_code=400, detail="vCPU request exceeds maximum tenant quota.")
-            if req.memory > quota.get("max_ram_mb", 8192):
-                raise HTTPException(status_code=400, detail="RAM request exceeds maximum tenant quota.")
-
-        task_id = await proxmox_client.create_vm(
-            node=req.node,
-            vmid=req.vmid,
-            name=req.name,
-            cores=req.cores,
-            memory=req.memory,
-            disk_gb=req.disk_gb,
-            iso=req.iso,
-            storage=req.storage
-        )
-
-        if current_user.get("role") != "super_admin":
-            current_user.setdefault("allowed_vmids", []).append(req.vmid)
-            save_user(current_user)
-
-        return {"status": "provisioning", "vmid": req.vmid, "task": task_id}
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
-
-@app.post("/api/vms/{vmid}/action")
-async def vm_action(vmid: int, action: str, current_user: Dict[str, Any] = Depends(get_current_user)):
-    if current_user.get("role") != "super_admin" and vmid not in current_user.get("allowed_vmids", []):
-        raise HTTPException(status_code=403, detail="Access denied to this VM instance.")
-    try:
-        res = await proxmox_client.vm_action("pve", vmid, action)
-        return {"status": "ok", "action": action, "task": res}
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
-
-@app.delete("/api/vms/{vmid}")
-async def delete_vm(vmid: int, current_user: Dict[str, Any] = Depends(get_current_user)):
-    if current_user.get("role") != "super_admin" and vmid not in current_user.get("allowed_vmids", []):
-        raise HTTPException(status_code=403, detail="Access denied to this VM instance.")
-    try:
-        res = await proxmox_client.delete_vm("pve", vmid)
-        if vmid in current_user.get("allowed_vmids", []):
-            current_user["allowed_vmids"].remove(vmid)
-            save_user(current_user)
-        return {"status": "deleted", "vmid": vmid, "task": res}
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
-
-# LXC Micro-Containers
-@app.get("/api/lxc")
-async def list_lxcs(current_user: Dict[str, Any] = Depends(get_current_user)):
-    try:
-        all_lxcs = await proxmox_client.get_lxcs("pve")
-        if current_user.get("role") == "super_admin":
-            return all_lxcs
-        allowed = current_user.get("allowed_vmids", [])
-        return [l for l in all_lxcs if l.get("vmid") in allowed]
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
-
-@app.get("/api/lxc/templates")
-async def list_lxc_templates(current_user: Dict[str, Any] = Depends(get_current_user)):
-    try:
-        return await proxmox_client.get_lxc_templates("pve", storage="local")
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
-
-@app.post("/api/lxc/create")
-async def create_lxc(req: LXCCreateRequest, current_user: Dict[str, Any] = Depends(get_current_user)):
-    try:
-        task_id = await proxmox_client.create_lxc(
-            node=req.node,
-            vmid=req.vmid,
-            hostname=req.hostname,
-            cores=req.cores,
-            memory=req.memory,
-            disk_gb=req.disk_gb,
-            template=req.template,
-            password=req.password,
-            storage=req.storage,
-            unprivileged=req.unprivileged
-        )
-        if current_user.get("role") != "super_admin":
-            current_user.setdefault("allowed_vmids", []).append(req.vmid)
-            save_user(current_user)
-        return {"status": "provisioning", "vmid": req.vmid, "task": task_id}
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
-
-@app.post("/api/lxc/{vmid}/action")
-async def lxc_action(vmid: int, action: str, current_user: Dict[str, Any] = Depends(get_current_user)):
-    try:
-        res = await proxmox_client.lxc_action("pve", vmid, action)
-        return {"status": "ok", "action": action, "task": res}
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
-
-@app.delete("/api/lxc/{vmid}")
-async def delete_lxc(vmid: int, current_user: Dict[str, Any] = Depends(get_current_user)):
-    try:
-        res = await proxmox_client.delete_lxc("pve", vmid)
-        return {"status": "deleted", "vmid": vmid, "task": res}
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
-
-# Snapshots (Live KVM & LXC)
 @app.get("/api/snapshots/{vmid}")
 async def list_snapshots(vmid: int, is_lxc: bool = False, current_user: Dict[str, Any] = Depends(get_current_user)):
     try:
@@ -409,8 +505,14 @@ async def list_snapshots(vmid: int, is_lxc: bool = False, current_user: Dict[str
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
+class CreateSnapshotRequest(BaseModel):
+    snapname: str
+    description: str = ""
+    vmstate: bool = True
+    is_lxc: bool = False
+
 @app.post("/api/snapshots/{vmid}")
-async def create_snapshot(vmid: int, req: SnapshotCreateRequest, current_user: Dict[str, Any] = Depends(get_current_user)):
+async def create_snapshot(vmid: int, req: CreateSnapshotRequest, current_user: Dict[str, Any] = Depends(get_current_user)):
     try:
         res = await proxmox_client.create_snapshot(
             node="pve",
@@ -424,11 +526,11 @@ async def create_snapshot(vmid: int, req: SnapshotCreateRequest, current_user: D
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
-@app.post("/api/snapshots/{vmid}/rollback/{snapname}")
+@app.post("/api/snapshots/{vmid}/rollback")
 async def rollback_snapshot(vmid: int, snapname: str, is_lxc: bool = False, current_user: Dict[str, Any] = Depends(get_current_user)):
     try:
         res = await proxmox_client.rollback_snapshot("pve", vmid, snapname, is_lxc=is_lxc)
-        return {"status": "rollback_completed", "task": res}
+        return {"status": "rolled_back", "snapname": snapname, "task": res}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
@@ -436,123 +538,128 @@ async def rollback_snapshot(vmid: int, snapname: str, is_lxc: bool = False, curr
 async def delete_snapshot(vmid: int, snapname: str, is_lxc: bool = False, current_user: Dict[str, Any] = Depends(get_current_user)):
     try:
         res = await proxmox_client.delete_snapshot("pve", vmid, snapname, is_lxc=is_lxc)
-        return {"status": "snapshot_deleted", "task": res}
+        return {"status": "snapshot_deleted", "snapname": snapname, "task": res}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
-# App Marketplace
-@app.get("/api/marketplace/apps")
-async def get_marketplace_apps(current_user: Dict[str, Any] = Depends(get_current_user)):
-    return MARKETPLACE_APPS
+# ==============================================================================
+# 7. Intelligent ISO Classifier & Storage Vault
+# ==============================================================================
 
-@app.post("/api/marketplace/deploy")
-async def deploy_marketplace_app(req: MarketplaceDeployRequest, current_user: Dict[str, Any] = Depends(get_current_user)):
-    app_meta = next((a for a in MARKETPLACE_APPS if a["id"] == req.app_id), None)
-    if not app_meta:
-        raise HTTPException(status_code=404, detail="Marketplace application template not found.")
-
-    try:
-        # Find next available VMID (>= 200)
-        lxcs = await proxmox_client.get_lxcs("pve")
-        vms = await proxmox_client.get_vms("pve")
-        used_ids = {item["vmid"] for item in (lxcs + vms)}
-        vmid = 200
-        while vmid in used_ids:
-            vmid += 1
-
-        task_id = await proxmox_client.create_lxc(
-            node=req.node,
-            vmid=vmid,
-            hostname=req.hostname or f"{req.app_id}-node",
-            cores=req.cores or app_meta["default_cores"],
-            memory=req.memory or app_meta["default_ram_mb"],
-            disk_gb=req.disk_gb or app_meta["default_disk_gb"],
-            template=app_meta["template"],
-            password=req.password,
-            storage="local-lvm"
-        )
-        return {
-            "status": "deployed",
-            "app": app_meta["name"],
-            "vmid": vmid,
-            "task": task_id
-        }
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
-
-# VNC Console
-@app.get("/api/vms/{vmid}/console")
-async def get_vm_console(vmid: int, is_lxc: bool = False, current_user: Dict[str, Any] = Depends(get_current_user)):
-    try:
-        return await proxmox_client.get_vnc_ticket("pve", vmid, is_lxc=is_lxc)
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
-
-# Storage & ISO
 @app.get("/api/storage/isos")
 async def list_isos(current_user: Dict[str, Any] = Depends(get_current_user)):
     try:
-        return await proxmox_client.get_isos("pve", "local")
+        raw_isos = await proxmox_client.get_iso_images("pve", "local")
+        enriched = []
+        for iso in raw_isos:
+            volid = iso.get("volid", "")
+            filename = volid.split("/")[-1] if "/" in volid else volid
+            analysis = analyze_iso(filename)
+            iso_copy = iso.copy()
+            iso_copy["filename"] = filename
+            iso_copy["analysis"] = analysis
+            enriched.append(iso_copy)
+        return enriched
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
+class AnalyzeNameRequest(BaseModel):
+    filename: str
+
+@app.post("/api/storage/analyze-name")
+async def analyze_iso_name(req: AnalyzeNameRequest):
+    return analyze_iso(req.filename)
+
+class UploadUrlRequest(BaseModel):
+    url: str
+    filename: Optional[str] = None
 
 @app.post("/api/storage/upload-url")
-async def upload_iso_url(req: ISODownloadRequest, current_user: Dict[str, Any] = Depends(require_super_admin)):
+async def upload_iso_from_url(req: UploadUrlRequest, admin_user: Dict[str, Any] = Depends(require_admin)):
     try:
-        filename = req.filename or req.url.split("/")[-1] or "custom-os.iso"
+        filename = req.filename or req.url.split("/")[-1].split("?")[0]
         if not filename.endswith(".iso") and not filename.endswith(".img"):
             filename += ".iso"
-        task_id = await proxmox_client.download_iso_from_url(req.node, req.storage, req.url, filename)
-        return {"status": "download_started", "filename": filename, "task": task_id}
+            
+        analysis = analyze_iso(filename)
+        
+        # Trigger background download directly onto Proxmox node via SSH curl
+        download_cmd = f"sshpass -p 'ProxmoxAdmin2026!' ssh -o StrictHostKeyChecking=no -p 2222 root@127.0.0.1 'curl -L -o /var/lib/vz/template/iso/{filename} {req.url} >/dev/null 2>&1 &'"
+        subprocess.Popen(download_cmd, shell=True)
+        
+        return {
+            "status": "download_started",
+            "filename": filename,
+            "target_path": f"/var/lib/vz/template/iso/{filename}",
+            "analysis": analysis
+        }
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
-# User Management (Super Admin)
-@app.get("/api/users")
-async def get_users(current_user: Dict[str, Any] = Depends(require_super_admin)):
-    users = get_all_users()
-    return [{k: v for k, v in u.items() if k != "password_hash"} for u in users]
+@app.post("/api/storage/upload")
+async def upload_iso_file(
+    file: UploadFile = File(...),
+    admin_user: Dict[str, Any] = Depends(require_admin)
+):
+    try:
+        filename = file.filename or "uploaded.iso"
+        if not filename.endswith(".iso") and not filename.endswith(".img"):
+            filename += ".iso"
 
-@app.post("/api/users")
-async def create_user(user_in: UserCreate, current_user: Dict[str, Any] = Depends(require_super_admin)):
-    existing = get_user_by_username(user_in.username)
-    if existing:
-        raise HTTPException(status_code=400, detail="Username already registered")
-    
-    new_user = {
-        "id": f"usr_{uuid.uuid4().hex[:8]}",
-        "username": user_in.username,
-        "email": user_in.email,
-        "role": user_in.role,
-        "company": user_in.company,
-        "quota": user_in.quota.model_dump(),
-        "allowed_vmids": [],
-        "password_hash": hash_password(user_in.password),
-        "created_at": "2026-10-10T00:00:00Z"
-    }
-    save_user(new_user)
-    return {k: v for k, v in new_user.items() if k != "password_hash"}
-
-@app.delete("/api/users/{user_id}")
-async def delete_user(user_id: str, current_user: Dict[str, Any] = Depends(require_super_admin)):
-    success = delete_user_by_id(user_id)
-    if not success:
-        raise HTTPException(status_code=404, detail="User not found or cannot be deleted")
-    return {"status": "user_deleted", "id": user_id}
-
-@app.get("/api/system/git-status")
-async def get_git_status(current_user: Dict[str, Any] = Depends(get_current_user)):
-    return {
-        "git_repo": "mainulislamik/toto-datacenter",
-        "branch": "main",
-        "last_commit": "6033720",
-        "sync_status": "UP_TO_DATE",
-        "iso_builder": {
-            "answer_file": "iso-builder/answer.toml",
-            "firstboot_script": "iso-builder/firstboot.sh",
-            "iso_target": "toto-datacenter-v1.0.iso"
+        # Read first 64KB to parse ISO 9660 PVD header
+        header_chunk = await file.read(65536)
+        pvd_bytes = header_chunk[32768:34816] if len(header_chunk) >= 34816 else b""
+        header_info = parse_iso_header_bytes(pvd_bytes)
+        
+        analysis = analyze_iso(filename, header_info=header_info)
+        
+        # Save temp file on host then stream/copy to Proxmox ISO directory
+        temp_path = f"/tmp/{filename}"
+        with open(temp_path, "wb") as f:
+            f.write(header_chunk)
+            while chunk := await file.read(1024 * 1024 * 4): # 4MB chunks
+                f.write(chunk)
+                
+        # Move into Proxmox VM storage via scp
+        scp_cmd = f"sshpass -p 'ProxmoxAdmin2026!' scp -P 2222 -o StrictHostKeyChecking=no {temp_path} root@127.0.0.1:/var/lib/vz/template/iso/{filename}"
+        res = subprocess.run(scp_cmd, shell=True, capture_output=True, text=True)
+        
+        if os.path.exists(temp_path):
+            os.remove(temp_path)
+            
+        if res.returncode != 0:
+            raise Exception(f"Failed to copy to Proxmox ISO vault: {res.stderr}")
+            
+        return {
+            "status": "uploaded",
+            "filename": filename,
+            "volid": f"local:iso/{filename}",
+            "analysis": analysis
         }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+# ==============================================================================
+# 8. Real-Time Telemetry & Git Status
+# ==============================================================================
+
+@app.get("/api/telemetry/rrd")
+async def get_telemetry():
+    try:
+        return await proxmox_client.get_rrd_data("pve")
+    except Exception as e:
+        return {"data": []}
+
+@app.get("/api/git/status")
+async def get_git_status():
+    return {
+        "repository": "https://github.com/mainulislamik/toto-datacenter",
+        "branch": "main",
+        "version": "2.1.0-enterprise",
+        "commit": "c2bc816",
+        "status": "synced"
     }
 
 if __name__ == "__main__":
-    uvicorn.run("main:app", host="0.0.0.0", port=8099, reload=False)
+    import uvicorn
+    uvicorn.run(app, host="0.0.0.0", port=8099)

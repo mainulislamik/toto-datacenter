@@ -57,6 +57,11 @@ class ProxmoxClient:
             res = resp.json()
             return res.get("data", res)
 
+    # Next Available VMID Helper
+    async def get_next_vmid(self) -> int:
+        data = await self._request("GET", "/cluster/nextid")
+        return int(data)
+
     # Cluster & Node Health
     async def get_cluster_status(self) -> List[Dict[str, Any]]:
         return await self._request("GET", "/cluster/status")
@@ -89,6 +94,7 @@ class ProxmoxClient:
         memory: int = 2048,
         disk_gb: int = 20,
         iso: Optional[str] = None,
+        ostype: str = "l26",
         storage: str = "local-lvm",
         sockets: int = 1,
         net_bridge: str = "vmbr0",
@@ -103,7 +109,7 @@ class ProxmoxClient:
             "scsihw": "virtio-scsi-pci",
             "scsi0": f"{storage}:{disk_gb},discard=on,ssd=1",
             "net0": f"virtio,bridge={net_bridge},firewall=1",
-            "ostype": "l26",
+            "ostype": ostype,
             "boot": "order=scsi0;ide2;net0"
         }
         if iso:
@@ -113,8 +119,16 @@ class ProxmoxClient:
 
         return await self._request("POST", f"/nodes/{node}/qemu", data=payload)
 
+    async def start_vm(self, node: str, vmid: int) -> str:
+        return await self._request("POST", f"/nodes/{node}/qemu/{vmid}/status/start")
+
+    async def stop_vm(self, node: str, vmid: int) -> str:
+        return await self._request("POST", f"/nodes/{node}/qemu/{vmid}/status/stop")
+
+    async def reboot_vm(self, node: str, vmid: int) -> str:
+        return await self._request("POST", f"/nodes/{node}/qemu/{vmid}/status/reboot")
+
     async def vm_action(self, node: str, vmid: int, action: str) -> str:
-        # actions: start, stop, shutdown, reboot, reset, suspend, resume
         return await self._request("POST", f"/nodes/{node}/qemu/{vmid}/status/{action}")
 
     async def delete_vm(self, node: str, vmid: int, purge: bool = True) -> str:
@@ -158,8 +172,16 @@ class ProxmoxClient:
         }
         return await self._request("POST", f"/nodes/{node}/lxc", data=payload)
 
+    async def start_lxc(self, node: str, vmid: int) -> str:
+        return await self._request("POST", f"/nodes/{node}/lxc/{vmid}/status/start")
+
+    async def stop_lxc(self, node: str, vmid: int) -> str:
+        return await self._request("POST", f"/nodes/{node}/lxc/{vmid}/status/stop")
+
+    async def reboot_lxc(self, node: str, vmid: int) -> str:
+        return await self._request("POST", f"/nodes/{node}/lxc/{vmid}/status/reboot")
+
     async def lxc_action(self, node: str, vmid: int, action: str) -> str:
-        # actions: start, stop, shutdown, reboot
         return await self._request("POST", f"/nodes/{node}/lxc/{vmid}/status/{action}")
 
     async def delete_lxc(self, node: str, vmid: int, purge: bool = True) -> str:
@@ -189,15 +211,15 @@ class ProxmoxClient:
         return await self._request("DELETE", endpoint)
 
     # VNC & Console
-    async def get_vnc_ticket(self, node: str, vmid: int, is_lxc: bool = False) -> Dict[str, Any]:
+    async def get_vnc_proxy(self, node: str, vmid: int, is_lxc: bool = False) -> Dict[str, Any]:
         endpoint = f"/nodes/{node}/lxc/{vmid}/vncproxy" if is_lxc else f"/nodes/{node}/qemu/{vmid}/vncproxy"
         return await self._request("POST", endpoint, data={"websocket": 1})
 
     # Storage & ISOs
-    async def get_storage_list(self, node: str = "pve") -> List[Dict[str, Any]]:
+    async def get_storage_status(self, node: str = "pve") -> List[Dict[str, Any]]:
         return await self._request("GET", f"/nodes/{node}/storage")
 
-    async def get_isos(self, node: str = "pve", storage: str = "local") -> List[Dict[str, Any]]:
+    async def get_iso_images(self, node: str = "pve", storage: str = "local") -> List[Dict[str, Any]]:
         content = await self._request("GET", f"/nodes/{node}/storage/{storage}/content", params={"content": "iso"})
         return content
 
