@@ -7,24 +7,26 @@ from fastapi import FastAPI, Depends, HTTPException, status, Header, UploadFile,
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
+from proxmox_client import proxmox_client
+from iso_analyzer import analyze_iso, parse_iso_header_bytes
 from auth import (
-    authenticate_user, 
-    create_access_token, 
-    decode_token, 
+    authenticate_user,
+    create_access_token,
     get_user_by_username,
     get_all_users,
     save_user,
     delete_user_by_id,
-    hash_password,
-    UserQuota
+    get_current_user,
+    require_admin,
+    require_quota,
+    UserCreate,
+    Token
 )
-from proxmox_client import proxmox_client
-from iso_analyzer import analyze_iso, parse_iso_header_bytes
 
 app = FastAPI(
-    title="Toto Datacenter API (Enterprise Multi-Node v2.5)",
+    title="Toto Datacenter API",
     version="2.5.0",
-    description="Proxmox VE Cluster Orchestration & Datacenter Management Engine"
+    description="Enterprise Datacenter Orchestration API for Proxmox KVM & LXC with Multi-Node Clustering and Intelligent Storage"
 )
 
 app.add_middleware(
@@ -35,575 +37,533 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# ==================== DATA MODELS ====================
-
+# Request Models
 class LoginRequest(BaseModel):
     username: str
     password: str
 
 class VMCreateRequest(BaseModel):
+    vmid: int
     name: str
     cores: int = 2
     memory: int = 2048
-    disk_size: int = 20
+    disk_gb: int = 20
     iso: Optional[str] = None
-    node: str = "pve"
-    ostype: str = "l26"
+    os_type: str = "l26"
     bios: str = "seabios"
+    node: str = "pve"
 
 class LXCCreateRequest(BaseModel):
-    name: str
-    ostemplate: str = "local:vztmpl/alpine-3.20-default_20240606_amd64.tar.xz"
-    cores: int = 1
-    memory: int = 512
-    disk_size: int = 8
-    node: str = "pve"
-    password: Optional[str] = "TotoCloud2026!"
-
-class MarketplaceLaunchRequest(BaseModel):
-    app_id: str
-    name: str
-    cores: Optional[int] = None
-    memory: Optional[int] = None
-    disk_size: Optional[int] = None
+    vmid: int
+    hostname: str
+    ostemplate: str = "local:vztmpl/ubuntu-22.04-standard_22.04-1_amd64.tar.zst"
+    cores: int = 2
+    memory: int = 2048
+    disk_gb: int = 10
+    password: str = "TotoLXC2026!"
     node: str = "pve"
 
 class SnapshotCreateRequest(BaseModel):
     snapname: str
     description: Optional[str] = ""
+    vmstate: bool = False
 
-class MigrateRequest(BaseModel):
-    target_node: str
-    source_node: str = "pve"
-    online: bool = True
-
-class NFSStorageRequest(BaseModel):
-    storage_name: str
-    server_ip: str
-    export_path: str
-    content: str = "images,iso,backup"
+class AppDeployRequest(BaseModel):
+    app_id: str
+    vmid: int
+    name: str
+    password: Optional[str] = "TotoApp2026!"
+    node: str = "pve"
 
 class ISOUploadURLRequest(BaseModel):
     url: str
     filename: Optional[str] = None
+    node: str = "pve"
 
 class ISOAnalyzeNameRequest(BaseModel):
     filename: str
 
-# ==================== AUTH DEPENDENCY ====================
+class VMMigrateRequest(BaseModel):
+    target_node: str
+    source_node: str = "pve"
+    online: bool = True
 
-async def get_current_user(authorization: Optional[str] = Header(None)) -> Dict[str, Any]:
-    if not authorization or not authorization.startswith("Bearer "):
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Missing or invalid authentication token",
-            headers={"WWW-Authenticate": "Bearer"},
-        )
-    token = authorization.split(" ")[1]
-    payload = decode_token(token)
-    if not payload:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Invalid or expired token",
-            headers={"WWW-Authenticate": "Bearer"},
-        )
-    user = get_user_by_username(payload.get("sub", ""))
+class LXCMigrateRequest(BaseModel):
+    target_node: str
+    source_node: str = "pve"
+    restart: bool = False
+
+class AddNFSRequest(BaseModel):
+    storage_name: str
+    server_ip: str
+    export_path: str
+    node: str = "pve"
+
+# ----------------- AUTHENTICATION ROUTES -----------------
+
+@app.post("/api/auth/login", response_model=Token)
+async def login(req: LoginRequest):
+    user = authenticate_user(req.username, req.password)
     if not user:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="User not found",
+            detail="Incorrect username or password",
             headers={"WWW-Authenticate": "Bearer"},
         )
-    return user
+    token = create_access_token(user)
+    return Token(
+        access_token=token,
+        token_type="bearer",
+        role=user.get("role", "user"),
+        username=user.get("username", req.username),
+        user_id=user.get("id", "usr_unknown")
+    )
 
-async def require_admin(user: Dict[str, Any] = Depends(get_current_user)) -> Dict[str, Any]:
-    if user.get("role") != "super_admin":
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Access forbidden: Super Admin role required"
-        )
-    return user
+@app.get("/api/auth/me")
+async def get_me(current_user: Dict[str, Any] = Depends(get_current_user)):
+    user = get_user_by_username(current_user.get("username", ""))
+    if not user:
+        return current_user
+    return {
+        "id": user.get("id"),
+        "username": user.get("username"),
+        "role": user.get("role"),
+        "quota": user.get("quota", {})
+    }
 
-# ==================== CLUSTER & MULTI-NODE ROUTES ====================
+@app.get("/api/auth/users")
+async def list_users(admin_user: Dict[str, Any] = Depends(require_admin)):
+    users = get_all_users()
+    return [
+        {
+            "id": u.get("id"),
+            "username": u.get("username"),
+            "role": u.get("role"),
+            "quota": u.get("quota", {}),
+            "created_at": u.get("created_at")
+        } for u in users
+    ]
 
-@app.get("/api/cluster/nodes", response_model=List[Dict[str, Any]])
-async def list_cluster_nodes(current_user: Dict[str, Any] = Depends(get_current_user)):
+@app.post("/api/auth/users")
+async def create_user_account(
+    req: UserCreate,
+    admin_user: Dict[str, Any] = Depends(require_admin)
+):
+    existing = get_user_by_username(req.username)
+    if existing:
+        raise HTTPException(status_code=400, detail="Username already exists")
+    user = save_user(req.dict())
+    return {
+        "status": "success",
+        "user": {
+            "id": user.get("id"),
+            "username": user.get("username"),
+            "role": user.get("role"),
+            "quota": user.get("quota", {})
+        }
+    }
+
+@app.delete("/api/auth/users/{user_id}")
+async def delete_user_account(
+    user_id: str,
+    admin_user: Dict[str, Any] = Depends(require_admin)
+):
+    if user_id in ["usr_admin", "usr-admin-01"]:
+        raise HTTPException(status_code=400, detail="Cannot delete default super admin")
+    deleted = delete_user_by_id(user_id)
+    if not deleted:
+        raise HTTPException(status_code=404, detail="User not found")
+    return {"status": "success", "message": f"User {user_id} deleted"}
+
+# ----------------- CLUSTER & SCALE-OUT ROUTES -----------------
+
+@app.get("/api/cluster/nodes")
+async def get_cluster_nodes(current_user: Dict[str, Any] = Depends(get_current_user)):
     try:
-        nodes = await proxmox_client.get_nodes()
-        return nodes
+        return await proxmox_client.get_nodes()
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.get("/api/cluster/status")
 async def get_cluster_status(current_user: Dict[str, Any] = Depends(get_current_user)):
     try:
-        status_data = await proxmox_client.get_cluster_status()
-        return {"cluster": status_data}
+        return await proxmox_client.get_cluster_status()
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.get("/api/cluster/join-info")
 async def get_cluster_join_info(admin_user: Dict[str, Any] = Depends(require_admin)):
-    """Returns cluster join token, SSL fingerprint, and copy-pasteable joining commands"""
     try:
-        join_data = await proxmox_client.get_cluster_join_info()
-        nodelist = join_data.get("nodelist", [])
-        preferred_node = join_data.get("preferred_node", "pve")
-        master_ip = "192.168.0.100"
-        fingerprint = ""
-        if nodelist:
-            fingerprint = nodelist[0].get("pve_fp", "")
-            master_ip = nodelist[0].get("pve_addr", master_ip)
-        
-        join_command = f"pvecm add {master_ip} --fingerprint {fingerprint} --use_ssh"
-        
-        return {
-            "cluster_name": "toto-datacenter",
-            "master_node": preferred_node,
-            "master_ip": master_ip,
-            "fingerprint": fingerprint,
-            "join_command": join_command,
-            "raw_data": join_data
-        }
+        return await proxmox_client.get_cluster_join_info()
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
-@app.post("/api/vms/{vmid}/migrate")
-async def migrate_virtual_machine(
-    vmid: int, 
-    req: MigrateRequest, 
-    current_user: Dict[str, Any] = Depends(get_current_user)
-):
-    """Triggers zero-downtime live VM migration between physical nodes"""
-    try:
-        res = await proxmox_client.migrate_vm(
-            vmid=vmid, 
-            target_node=req.target_node, 
-            source_node=req.source_node, 
-            online=req.online
-        )
-        return {"status": "success", "message": f"VM {vmid} migration initiated to node {req.target_node}", "data": res}
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+# ----------------- DATACENTER OVERVIEW -----------------
 
-@app.post("/api/lxc/{vmid}/migrate")
-async def migrate_lxc_container(
-    vmid: int, 
-    req: MigrateRequest, 
-    current_user: Dict[str, Any] = Depends(get_current_user)
-):
-    """Triggers live container migration between physical nodes"""
-    try:
-        res = await proxmox_client.migrate_lxc(
-            vmid=vmid, 
-            target_node=req.target_node, 
-            source_node=req.source_node, 
-            restart=True
-        )
-        return {"status": "success", "message": f"LXC {vmid} migration initiated to node {req.target_node}", "data": res}
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
-
-@app.post("/api/storage/nfs")
-async def add_shared_nfs_storage(
-    req: NFSStorageRequest, 
-    admin_user: Dict[str, Any] = Depends(require_admin)
-):
-    """Attaches an external Enterprise NFS / TrueNAS storage pool to all cluster nodes"""
-    try:
-        res = await proxmox_client.add_nfs_storage(
-            storage=req.storage_name,
-            server=req.server_ip,
-            export=req.export_path,
-            content=req.content
-        )
-        return {"status": "success", "message": f"Shared NFS storage '{req.storage_name}' attached to cluster", "data": res}
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
-
-# ==================== DATACENTER OVERVIEW ====================
-
-@app.get("/api/datacenter/overview")
+@app.get("/api/overview")
 async def get_datacenter_overview(current_user: Dict[str, Any] = Depends(get_current_user)):
     try:
+        user_role = current_user.get("role", "user")
+        vms = await proxmox_client.get_vms()
+        lxcs = await proxmox_client.get_lxcs()
+        storages = await proxmox_client.get_storage()
         nodes = await proxmox_client.get_nodes()
-        total_cpu = 0
-        used_cpu_pct = 0.0
-        total_mem = 0
-        used_mem = 0
-        total_disk = 0
-        used_disk = 0
 
-        for n in nodes:
-            total_cpu += n.get("maxcpu", 0)
-            used_cpu_pct += n.get("cpu", 0) * 100
-            total_mem += n.get("maxmem", 0)
-            used_mem += n.get("mem", 0)
-            total_disk += n.get("maxdisk", 0)
-            used_disk += n.get("disk", 0)
+        allowed_vmids = current_user.get("allowed_vmids", [])
+        if user_role != "super_admin" and allowed_vmids:
+            vms = [v for v in vms if v.get("vmid") in allowed_vmids]
+            lxcs = [c for c in lxcs if c.get("vmid") in allowed_vmids]
 
-        vms = await proxmox_client.get_vms("pve")
-        lxcs = await proxmox_client.get_lxcs("pve")
+        total_vms = len(vms)
         running_vms = sum(1 for v in vms if v.get("status") == "running")
-        running_lxcs = sum(1 for l in lxcs if l.get("status") == "running")
+        total_lxcs = len(lxcs)
+        running_lxcs = sum(1 for c in lxcs if c.get("status") == "running")
 
-        storages = await proxmox_client.get_storage("pve")
-        for s in storages:
-            if s.get("storage") == "local-lvm":
-                total_disk = s.get("total", total_disk)
-                used_disk = s.get("used", used_disk)
+        total_ram = sum(v.get("maxmem", 0) for v in vms) + sum(c.get("maxmem", 0) for c in lxcs)
+        used_ram = sum(v.get("mem", 0) for v in vms if v.get("status") == "running") + sum(c.get("mem", 0) for c in lxcs if c.get("status") == "running")
+
+        total_disk = sum(s.get("total", 0) for s in storages)
+        used_disk = sum(s.get("used", 0) for s in storages)
 
         return {
-            "cluster_name": "toto-datacenter",
-            "cluster_health": "healthy",
-            "nodes_online": len([n for n in nodes if n.get("status") == "online"]),
-            "nodes_total": len(nodes),
-            "total_vcpus": total_cpu or 4,
-            "cpu_load_pct": round(used_cpu_pct / max(len(nodes), 1), 1),
+            "cluster_nodes": len(nodes),
+            "total_vms": total_vms,
             "running_vms": running_vms,
-            "total_vms": len(vms),
+            "total_lxcs": total_lxcs,
             "running_lxcs": running_lxcs,
-            "total_lxcs": len(lxcs),
             "memory": {
-                "total_bytes": total_mem or 6442450944,
-                "used_bytes": used_mem,
-                "usage_pct": round((used_mem / max(total_mem, 1)) * 100, 1) if total_mem else 24.1
+                "used": used_ram,
+                "total": total_ram or 6442450944,
+                "percentage": round((used_ram / (total_ram or 6442450944)) * 100, 1)
             },
             "storage": {
-                "pool_name": "local-lvm (Enterprise SSD)",
-                "total_bytes": total_disk or 161061273600,
-                "used_bytes": used_disk,
-                "usage_pct": round((used_disk / max(total_disk, 1)) * 100, 1) if total_disk else 17.8
-            }
+                "used": used_disk,
+                "total": total_disk or 160000000000,
+                "percentage": round((used_disk / (total_disk or 160000000000)) * 100, 1) if total_disk else 0
+            },
+            "nodes": nodes,
+            "user_quota": current_user.get("quota", {})
         }
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
-# ==================== AUTH ROUTES ====================
-
-@app.post("/api/auth/login")
-async def login(req: LoginRequest):
-    user = authenticate_user(req.username, req.password)
-    if not user:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Incorrect username or password"
-        )
-    access_token = create_access_token(data={"sub": user.get("username"), "role": user.get("role")})
-    user_sanitized = {k: v for k, v in user.items() if k != "hashed_password"}
-    return {
-        "access_token": access_token,
-        "token_type": "bearer",
-        "user": user_sanitized
-    }
-
-@app.get("/api/auth/me")
-async def get_me(current_user: Dict[str, Any] = Depends(get_current_user)):
-    return {k: v for k, v in current_user.items() if k != "hashed_password"}
-
-@app.get("/api/auth/users", response_model=List[Dict[str, Any]])
-async def list_users(admin_user: Dict[str, Any] = Depends(require_admin)):
-    all_u = get_all_users()
-    return [{k: v for k, v in u.items() if k != "hashed_password"} for u in all_u]
-
-# ==================== VM ROUTES ====================
+# ----------------- VIRTUAL MACHINES (KVM) -----------------
 
 @app.get("/api/vms")
-async def list_vms(node: str = "pve", current_user: Dict[str, Any] = Depends(get_current_user)):
+async def list_vms(current_user: Dict[str, Any] = Depends(get_current_user)):
     try:
-        vms = await proxmox_client.get_vms(node)
+        vms = await proxmox_client.get_vms()
+        if current_user.get("role") != "super_admin" and current_user.get("allowed_vmids"):
+            vms = [v for v in vms if v.get("vmid") in current_user.get("allowed_vmids", [])]
         return vms
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.post("/api/vms")
-async def create_virtual_machine(vm_req: VMCreateRequest, current_user: Dict[str, Any] = Depends(get_current_user)):
-    vmid = await proxmox_client.get_next_vmid()
-    config = {
-        "vmid": vmid,
-        "name": vm_req.name,
-        "cores": vm_req.cores,
-        "memory": vm_req.memory,
-        "ostype": vm_req.ostype,
-        "scsihw": "virtio-scsi-pci",
-        "scsi0": f"local-lvm:{vm_req.disk_size}",
-        "net0": "virtio,bridge=vmbr0,firewall=1"
-    }
-    if vm_req.iso:
-        config["ide2"] = f"{vm_req.iso},media=cdrom"
-        config["boot"] = "order=ide2;scsi0;net0"
-    else:
-        config["boot"] = "order=scsi0;net0"
-
+async def create_vm(
+    req: VMCreateRequest,
+    current_user: Dict[str, Any] = Depends(require_quota)
+):
     try:
-        res = await proxmox_client.create_vm(config, vm_req.node)
-        return {"status": "success", "vmid": vmid, "data": res}
+        vm_config = {
+            "vmid": req.vmid,
+            "name": req.name,
+            "cores": req.cores,
+            "memory": req.memory,
+            "scsihw": "virtio-scsi-pci",
+            "virtio0": f"local-lvm:{req.disk_gb}",
+            "ostype": req.os_type,
+            "bios": req.bios,
+            "net0": "virtio,bridge=vmbr0"
+        }
+        if req.iso:
+            vm_config["ide2"] = f"{req.iso},media=cdrom"
+            vm_config["boot"] = "order=ide2;virtio0"
+        else:
+            vm_config["boot"] = "order=virtio0"
+
+        res = await proxmox_client.create_vm(vm_config, node=req.node)
+        return {"status": "success", "data": res, "vmid": req.vmid}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
-@app.post("/api/vms/{vmid}/action")
-async def vm_action(vmid: int, action: str, node: str = "pve", current_user: Dict[str, Any] = Depends(get_current_user)):
+@app.post("/api/vms/{vmid}/start")
+async def start_vm(vmid: int, node: str = "pve", current_user: Dict[str, Any] = Depends(get_current_user)):
     try:
-        if action == "start":
-            await proxmox_client.start_vm(vmid, node)
-        elif action == "stop":
-            await proxmox_client.stop_vm(vmid, node)
-        elif action == "reboot":
-            await proxmox_client.reboot_vm(vmid, node)
-        else:
-            raise HTTPException(status_code=400, detail="Invalid action")
-        return {"status": "success", "action": action, "vmid": vmid}
+        res = await proxmox_client.start_vm(vmid, node=node)
+        return {"status": "success", "data": res}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/api/vms/{vmid}/stop")
+async def stop_vm(vmid: int, node: str = "pve", current_user: Dict[str, Any] = Depends(get_current_user)):
+    try:
+        res = await proxmox_client.stop_vm(vmid, node=node)
+        return {"status": "success", "data": res}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/api/vms/{vmid}/reboot")
+async def reboot_vm(vmid: int, node: str = "pve", current_user: Dict[str, Any] = Depends(get_current_user)):
+    try:
+        res = await proxmox_client.reboot_vm(vmid, node=node)
+        return {"status": "success", "data": res}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.delete("/api/vms/{vmid}")
-async def delete_vm(vmid: int, node: str = "pve", current_user: Dict[str, Any] = Depends(get_current_user)):
+async def delete_vm(vmid: int, node: str = "pve", admin_user: Dict[str, Any] = Depends(require_admin)):
     try:
-        await proxmox_client.delete_vm(vmid, node)
-        return {"status": "success", "vmid": vmid}
+        res = await proxmox_client.delete_vm(vmid, node=node)
+        return {"status": "success", "data": res}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
-# ==================== LXC ROUTES ====================
+@app.post("/api/vms/{vmid}/migrate")
+async def live_migrate_vm(
+    vmid: int,
+    req: VMMigrateRequest,
+    admin_user: Dict[str, Any] = Depends(require_admin)
+):
+    try:
+        res = await proxmox_client.migrate_vm(vmid, target_node=req.target_node, source_node=req.source_node, online=req.online)
+        return {"status": "success", "data": res, "vmid": vmid, "target_node": req.target_node}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+# ----------------- LXC CONTAINERS -----------------
 
 @app.get("/api/lxc")
-async def list_lxcs(node: str = "pve", current_user: Dict[str, Any] = Depends(get_current_user)):
+async def list_lxcs(current_user: Dict[str, Any] = Depends(get_current_user)):
     try:
-        lxcs = await proxmox_client.get_lxcs(node)
+        lxcs = await proxmox_client.get_lxcs()
+        if current_user.get("role") != "super_admin" and current_user.get("allowed_vmids"):
+            lxcs = [c for c in lxcs if c.get("vmid") in current_user.get("allowed_vmids", [])]
         return lxcs
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.post("/api/lxc")
-async def create_lxc_container(lxc_req: LXCCreateRequest, current_user: Dict[str, Any] = Depends(get_current_user)):
-    vmid = await proxmox_client.get_next_vmid()
-    config = {
-        "vmid": vmid,
-        "hostname": lxc_req.name,
-        "ostemplate": lxc_req.ostemplate,
-        "cores": lxc_req.cores,
-        "memory": lxc_req.memory,
-        "swap": 512,
-        "rootfs": f"local-lvm:{lxc_req.disk_size}",
-        "net0": "name=eth0,bridge=vmbr0,firewall=1,ip=dhcp",
-        "unprivileged": 1,
-        "password": lxc_req.password
-    }
+async def create_lxc(
+    req: LXCCreateRequest,
+    current_user: Dict[str, Any] = Depends(require_quota)
+):
     try:
-        res = await proxmox_client.create_lxc(config, lxc_req.node)
-        return {"status": "success", "vmid": vmid, "data": res}
+        lxc_config = {
+            "vmid": req.vmid,
+            "hostname": req.hostname,
+            "ostemplate": req.ostemplate,
+            "cores": req.cores,
+            "memory": req.memory,
+            "rootfs": f"local-lvm:{req.disk_gb}",
+            "password": req.password,
+            "net0": "name=eth0,bridge=vmbr0,ip=dhcp,firewall=1",
+            "unprivileged": 1,
+            "start": 1
+        }
+        res = await proxmox_client.create_lxc(lxc_config, node=req.node)
+        return {"status": "success", "data": res, "vmid": req.vmid}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
-@app.post("/api/lxc/{vmid}/action")
-async def lxc_action(vmid: int, action: str, node: str = "pve", current_user: Dict[str, Any] = Depends(get_current_user)):
+@app.post("/api/lxc/{vmid}/start")
+async def start_lxc(vmid: int, node: str = "pve", current_user: Dict[str, Any] = Depends(get_current_user)):
     try:
-        if action == "start":
-            await proxmox_client.start_lxc(vmid, node)
-        elif action == "stop":
-            await proxmox_client.stop_lxc(vmid, node)
-        elif action == "reboot":
-            await proxmox_client.reboot_lxc(vmid, node)
-        else:
-            raise HTTPException(status_code=400, detail="Invalid action")
-        return {"status": "success", "action": action, "vmid": vmid}
+        res = await proxmox_client.start_lxc(vmid, node=node)
+        return {"status": "success", "data": res}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/api/lxc/{vmid}/stop")
+async def stop_lxc(vmid: int, node: str = "pve", current_user: Dict[str, Any] = Depends(get_current_user)):
+    try:
+        res = await proxmox_client.stop_lxc(vmid, node=node)
+        return {"status": "success", "data": res}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.delete("/api/lxc/{vmid}")
-async def delete_lxc(vmid: int, node: str = "pve", current_user: Dict[str, Any] = Depends(get_current_user)):
+async def delete_lxc(vmid: int, node: str = "pve", admin_user: Dict[str, Any] = Depends(require_admin)):
     try:
-        await proxmox_client.delete_lxc(vmid, node)
-        return {"status": "success", "vmid": vmid}
+        res = await proxmox_client.delete_lxc(vmid, node=node)
+        return {"status": "success", "data": res}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
-# ==================== SNAPSHOT ROUTES ====================
+@app.post("/api/lxc/{vmid}/migrate")
+async def migrate_lxc_container(
+    vmid: int,
+    req: LXCMigrateRequest,
+    admin_user: Dict[str, Any] = Depends(require_admin)
+):
+    try:
+        res = await proxmox_client.migrate_lxc(vmid, target_node=req.target_node, source_node=req.source_node, restart=req.restart)
+        return {"status": "success", "data": res, "vmid": vmid, "target_node": req.target_node}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+# ----------------- APP MARKETPLACE -----------------
+
+MARKETPLACE_TEMPLATES = {
+    "docker": {
+        "name": "Docker Engine + Portainer CE",
+        "description": "Ubuntu 22.04 LTS with Docker Daemon, Docker Compose v2, and Portainer Web UI",
+        "category": "DevOps",
+        "icon": "Layers",
+        "recommended_cores": 2,
+        "recommended_ram": 2048,
+        "recommended_disk": 20,
+        "ostemplate": "local:vztmpl/ubuntu-22.04-standard_22.04-1_amd64.tar.zst",
+    },
+    "node-nginx": {
+        "name": "Node.js 20 LTS + Nginx Web Server",
+        "description": "High-performance JavaScript backend environment with Nginx reverse proxy",
+        "category": "Web & Backend",
+        "icon": "Zap",
+        "recommended_cores": 2,
+        "recommended_ram": 2048,
+        "recommended_disk": 15,
+        "ostemplate": "local:vztmpl/ubuntu-22.04-standard_22.04-1_amd64.tar.zst",
+    },
+    "postgres": {
+        "name": "PostgreSQL 16 Enterprise Database",
+        "description": "Production-ready Relational SQL DB with SSL & remote connection tuning",
+        "category": "Database",
+        "icon": "HardDrive",
+        "recommended_cores": 2,
+        "recommended_ram": 4096,
+        "recommended_disk": 30,
+        "ostemplate": "local:vztmpl/debian-12-standard_12.2-1_amd64.tar.zst",
+    },
+    "redis": {
+        "name": "Redis 7 In-Memory Fast Cache",
+        "description": "High-speed key-value cache with persistence (AOF+RDB) enabled",
+        "category": "Database",
+        "icon": "Activity",
+        "recommended_cores": 1,
+        "recommended_ram": 1024,
+        "recommended_disk": 10,
+        "ostemplate": "local:vztmpl/alpine-3.19-default_20240207_amd64.tar.xz",
+    },
+    "fastapi": {
+        "name": "Python 3.11 FastAPI Async Microservice",
+        "description": "Modern async Python stack with Uvicorn, Pydantic v2, and Poetry",
+        "category": "API Services",
+        "icon": "Cpu",
+        "recommended_cores": 2,
+        "recommended_ram": 2048,
+        "recommended_disk": 15,
+        "ostemplate": "local:vztmpl/debian-12-standard_12.2-1_amd64.tar.zst",
+    }
+}
+
+@app.get("/api/marketplace/templates")
+async def get_marketplace_templates(current_user: Dict[str, Any] = Depends(get_current_user)):
+    return MARKETPLACE_TEMPLATES
+
+@app.post("/api/marketplace/deploy")
+async def deploy_marketplace_app(
+    req: AppDeployRequest,
+    current_user: Dict[str, Any] = Depends(require_quota)
+):
+    template = MARKETPLACE_TEMPLATES.get(req.app_id)
+    if not template:
+        raise HTTPException(status_code=404, detail="Marketplace app template not found")
+
+    try:
+        lxc_config = {
+            "vmid": req.vmid,
+            "hostname": f"{req.app_id}-{req.vmid}",
+            "ostemplate": template["ostemplate"],
+            "cores": template["recommended_cores"],
+            "memory": template["recommended_ram"],
+            "rootfs": f"local-lvm:{template['recommended_disk']}",
+            "password": req.password or "TotoApp2026!",
+            "net0": "name=eth0,bridge=vmbr0,ip=dhcp,firewall=1",
+            "unprivileged": 1,
+            "start": 1
+        }
+        res = await proxmox_client.create_lxc(lxc_config, node=req.node)
+        return {
+            "status": "success",
+            "message": f"Deploying {template['name']} into LXC Container #{req.vmid}",
+            "data": res,
+            "vmid": req.vmid,
+            "app": template["name"]
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+# ----------------- SNAPSHOTS (DISASTER RECOVERY) -----------------
 
 @app.get("/api/vms/{vmid}/snapshots")
 async def list_snapshots(vmid: int, is_lxc: bool = False, node: str = "pve", current_user: Dict[str, Any] = Depends(get_current_user)):
     try:
-        snaps = await proxmox_client.get_snapshots(vmid, is_lxc=is_lxc, node=node)
-        return snaps
+        return await proxmox_client.get_snapshots(vmid, is_lxc=is_lxc, node=node)
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.post("/api/vms/{vmid}/snapshots")
 async def create_snapshot(
-    vmid: int, 
-    snap_req: SnapshotCreateRequest, 
-    is_lxc: bool = False, 
-    node: str = "pve", 
+    vmid: int,
+    req: SnapshotCreateRequest,
+    is_lxc: bool = False,
+    node: str = "pve",
     current_user: Dict[str, Any] = Depends(get_current_user)
 ):
     try:
         res = await proxmox_client.create_snapshot(
-            vmid=vmid, 
-            snapname=snap_req.snapname, 
-            description=snap_req.description or "", 
-            is_lxc=is_lxc, 
+            vmid,
+            snapname=req.snapname,
+            description=req.description or "",
+            is_lxc=is_lxc,
             node=node
         )
-        return {"status": "success", "vmid": vmid, "snapname": snap_req.snapname, "data": res}
+        return {"status": "success", "data": res, "snapname": req.snapname}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.post("/api/vms/{vmid}/snapshots/{snapname}/rollback")
 async def rollback_snapshot(
-    vmid: int, 
-    snapname: str, 
-    is_lxc: bool = False, 
-    node: str = "pve", 
+    vmid: int,
+    snapname: str,
+    is_lxc: bool = False,
+    node: str = "pve",
     current_user: Dict[str, Any] = Depends(get_current_user)
 ):
     try:
-        res = await proxmox_client.rollback_snapshot(vmid, snapname, is_lxc=is_lxc, node=node)
-        return {"status": "success", "vmid": vmid, "snapname": snapname, "data": res}
+        res = await proxmox_client.rollback_snapshot(vmid, snapname=snapname, is_lxc=is_lxc, node=node)
+        return {"status": "success", "data": res, "snapname": snapname}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.delete("/api/vms/{vmid}/snapshots/{snapname}")
 async def delete_snapshot(
-    vmid: int, 
-    snapname: str, 
-    is_lxc: bool = False, 
-    node: str = "pve", 
-    current_user: Dict[str, Any] = Depends(get_current_user)
+    vmid: int,
+    snapname: str,
+    is_lxc: bool = False,
+    node: str = "pve",
+    admin_user: Dict[str, Any] = Depends(require_admin)
 ):
     try:
-        res = await proxmox_client.delete_snapshot(vmid, snapname, is_lxc=is_lxc, node=node)
-        return {"status": "success", "vmid": vmid, "snapname": snapname, "data": res}
+        res = await proxmox_client.delete_snapshot(vmid, snapname=snapname, is_lxc=is_lxc, node=node)
+        return {"status": "success", "data": res, "snapname": snapname}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
-# ==================== 1-CLICK MARKETPLACE APPS ====================
-
-MARKETPLACE_CATALOG = [
-    {
-        "id": "docker-host",
-        "name": "Docker & Compose Engine",
-        "category": "DevOps & Containers",
-        "icon": "docker",
-        "description": "Ubuntu 24.04 with Docker Engine 27, Compose v2, and container monitoring.",
-        "default_cores": 2,
-        "default_memory": 2048,
-        "default_disk": 20,
-        "ostemplate": "local:vztmpl/debian-12-standard_12.7-1_amd64.tar.zst",
-        "is_lxc": True
-    },
-    {
-        "id": "nodejs-nginx",
-        "name": "Node.js 22 & Nginx Web Server",
-        "category": "Web Stacks",
-        "icon": "server",
-        "description": "Production Node.js 22 LTS environment, PM2 process manager, and Nginx reverse proxy.",
-        "default_cores": 2,
-        "default_memory": 2048,
-        "default_disk": 15,
-        "ostemplate": "local:vztmpl/debian-12-standard_12.7-1_amd64.tar.zst",
-        "is_lxc": True
-    },
-    {
-        "id": "postgresql-16",
-        "name": "PostgreSQL 16 Enterprise Database",
-        "category": "Databases",
-        "icon": "database",
-        "description": "High-performance PostgreSQL 16 RDBMS with connection pooling & automated backups.",
-        "default_cores": 2,
-        "default_memory": 4096,
-        "default_disk": 25,
-        "ostemplate": "local:vztmpl/debian-12-standard_12.7-1_amd64.tar.zst",
-        "is_lxc": True
-    },
-    {
-        "id": "redis-7",
-        "name": "Redis 7 In-Memory Cache",
-        "category": "Caching & Queues",
-        "icon": "zap",
-        "description": "Ultra-fast Redis 7 memory caching and message broker on lightweight Alpine OS.",
-        "default_cores": 1,
-        "default_memory": 512,
-        "default_disk": 5,
-        "ostemplate": "local:vztmpl/alpine-3.20-default_20240606_amd64.tar.xz",
-        "is_lxc": True
-    },
-    {
-        "id": "python-fastapi",
-        "name": "Python 3.12 FastAPI Server",
-        "category": "Web Stacks",
-        "icon": "terminal",
-        "description": "Modern Python 3.12 API stack with Uvicorn, Gunicorn, and Pydantic v2.",
-        "default_cores": 2,
-        "default_memory": 2048,
-        "default_disk": 15,
-        "ostemplate": "local:vztmpl/debian-12-standard_12.7-1_amd64.tar.zst",
-        "is_lxc": True
-    }
-]
-
-@app.get("/api/marketplace/apps")
-async def list_marketplace_apps(current_user: Dict[str, Any] = Depends(get_current_user)):
-    return MARKETPLACE_CATALOG
-
-@app.post("/api/marketplace/launch")
-async def launch_marketplace_app(
-    req: MarketplaceLaunchRequest, 
-    current_user: Dict[str, Any] = Depends(get_current_user)
-):
-    app_meta = next((a for a in MARKETPLACE_CATALOG if a["id"] == req.app_id), None)
-    if not app_meta:
-        raise HTTPException(status_code=404, detail="Marketplace application template not found")
-
-    vmid = await proxmox_client.get_next_vmid()
-    cores = req.cores or app_meta["default_cores"]
-    memory = req.memory or app_meta["default_memory"]
-    disk_size = req.disk_size or app_meta["default_disk"]
-
-    config = {
-        "vmid": vmid,
-        "hostname": req.name.lower().replace(" ", "-"),
-        "ostemplate": app_meta["ostemplate"],
-        "cores": cores,
-        "memory": memory,
-        "swap": 512,
-        "rootfs": f"local-lvm:{disk_size}",
-        "net0": "name=eth0,bridge=vmbr0,firewall=1,ip=dhcp",
-        "unprivileged": 1,
-        "password": "TotoAppLaunch2026!"
-    }
-
-    try:
-        res = await proxmox_client.create_lxc(config, req.node)
-        await asyncio.sleep(2)
-        try:
-            await proxmox_client.start_lxc(vmid, req.node)
-        except Exception:
-            pass
-
-        return {
-            "status": "success",
-            "vmid": vmid,
-            "app_name": app_meta["name"],
-            "hostname": config["hostname"],
-            "data": res
-        }
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
-
-# ==================== STORAGE & ISO VAULT ROUTES ====================
+# ----------------- STORAGE & ISO VAULT -----------------
 
 @app.get("/api/storage/pools")
 async def list_storage_pools(node: str = "pve", current_user: Dict[str, Any] = Depends(get_current_user)):
     try:
-        storages = await proxmox_client.get_storage(node)
-        return storages
+        return await proxmox_client.get_storage(node=node)
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.get("/api/storage/isos")
-async def list_iso_images(node: str = "pve", storage: str = "local", current_user: Dict[str, Any] = Depends(get_current_user)):
+async def list_isos(node: str = "pve", storage: str = "local", current_user: Dict[str, Any] = Depends(get_current_user)):
     try:
-        raw_isos = await proxmox_client.get_isos(node, storage)
+        raw_isos = await proxmox_client.get_isos(node=node, storage=storage)
         enhanced_isos = []
         for iso in raw_isos:
             volid = iso.get("volid", "")
@@ -618,7 +578,6 @@ async def list_iso_images(node: str = "pve", storage: str = "local", current_use
 
 @app.post("/api/storage/analyze-name")
 async def analyze_iso_filename(req: ISOAnalyzeNameRequest, current_user: Dict[str, Any] = Depends(get_current_user)):
-    """Runs the AI & Heuristic pattern recognizer on an ISO filename"""
     return analyze_iso(req.filename)
 
 @app.post("/api/storage/upload")
@@ -626,41 +585,49 @@ async def upload_iso_file(
     file: UploadFile = File(...),
     admin_user: Dict[str, Any] = Depends(require_admin)
 ):
-    """Direct multipart ISO upload to Proxmox ISO vault with binary PVD sector inspection"""
+    """Direct multipart ISO upload using local SSD staging buffer and SCP transfer (Guarantees No Broken Pipe)"""
     filename = file.filename or f"iso-{uuid.uuid4().hex[:8]}.iso"
     if not (filename.endswith(".iso") or filename.endswith(".img")):
         filename += ".iso"
 
-    header_bytes = await file.read(65536)
+    staging_dir = "/home/imon/Extra_SSD/toto-iso-staging"
+    os.makedirs(staging_dir, exist_ok=True)
+    staging_path = os.path.join(staging_dir, filename)
+
+    header_bytes = b""
+    with open(staging_path, "wb") as f_out:
+        while True:
+            chunk = await file.read(4 * 1024 * 1024) # 4MB buffer chunk
+            if not chunk:
+                break
+            if len(header_bytes) < 65536:
+                header_bytes += chunk[:65536 - len(header_bytes)]
+            f_out.write(chunk)
+
     header_data = parse_iso_header_bytes(header_bytes)
     analysis = analyze_iso(filename, header_info=header_data)
 
-    target_remote_path = f"/var/lib/vz/template/iso/{filename}"
-    ssh_cmd = [
+    dest_path = f"/var/lib/vz/template/iso/{filename}"
+    scp_cmd = [
         "sshpass", "-p", "ProxmoxAdmin2026!",
-        "ssh", "-o", "StrictHostKeyChecking=no", "-p", "2222",
-        "root@127.0.0.1", f"cat > '{target_remote_path}'"
+        "scp", "-P", "2222", "-o", "StrictHostKeyChecking=no",
+        staging_path, f"root@127.0.0.1:{dest_path}"
     ]
 
-    try:
-        proc = subprocess.Popen(ssh_cmd, stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-        if proc.stdin:
-            proc.stdin.write(header_bytes)
-            while True:
-                chunk = await file.read(1024 * 1024)
-                if not chunk:
-                    break
-                proc.stdin.write(chunk)
-            proc.stdin.close()
-        proc.wait(timeout=300)
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Failed to stream ISO to Proxmox: {str(e)}")
+    scp_proc = subprocess.run(scp_cmd, capture_output=True, text=True, timeout=600)
+    if scp_proc.returncode != 0:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to copy ISO to Proxmox vault: {scp_proc.stderr or scp_proc.stdout}"
+        )
+
+    file_size = os.path.getsize(staging_path) if os.path.exists(staging_path) else (file.size or len(header_bytes))
 
     return {
         "status": "success",
         "filename": filename,
         "volid": f"local:iso/{filename}",
-        "size_bytes": file.size or len(header_bytes),
+        "size_bytes": file_size,
         "analysis": analysis
     }
 
@@ -677,32 +644,36 @@ async def download_iso_from_url(
     analysis = analyze_iso(filename)
     dest_path = f"/var/lib/vz/template/iso/{filename}"
     remote_cmd = f"curl -sL -o '{dest_path}' '{url}' &"
+    
+    ssh_cmd = [
+        "sshpass", "-p", "ProxmoxAdmin2026!",
+        "ssh", "-o", "StrictHostKeyChecking=no", "-p", "2222",
+        "root@127.0.0.1", remote_cmd
+    ]
+    subprocess.Popen(ssh_cmd)
 
-    try:
-        subprocess.Popen([
-            "sshpass", "-p", "ProxmoxAdmin2026!",
-            "ssh", "-o", "StrictHostKeyChecking=no", "-p", "2222",
-            "root@127.0.0.1", remote_cmd
-        ])
-        return {
-            "status": "download_started",
-            "filename": filename,
-            "url": url,
-            "analysis": analysis
-        }
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Failed to trigger ISO download: {str(e)}")
-
-# ==================== HEALTH ====================
-
-@app.get("/api/health")
-async def health():
     return {
-        "status": "healthy",
-        "version": "2.5.0",
-        "cluster": "toto-datacenter",
-        "tier": "enterprise-multi-node"
+        "status": "success",
+        "message": f"Background download initiated on Proxmox node for {filename}",
+        "filename": filename,
+        "volid": f"local:iso/{filename}",
+        "analysis": analysis
     }
+
+@app.post("/api/storage/nfs")
+async def add_nfs_storage(
+    req: AddNFSRequest,
+    admin_user: Dict[str, Any] = Depends(require_admin)
+):
+    try:
+        res = await proxmox_client.add_nfs_storage(
+            storage=req.storage_name,
+            server=req.server_ip,
+            export=req.export_path
+        )
+        return {"status": "success", "data": res, "storage_name": req.storage_name}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
 
 if __name__ == "__main__":
     import uvicorn

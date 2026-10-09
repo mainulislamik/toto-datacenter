@@ -52,90 +52,127 @@ async function request(path, options = {}) {
     headers,
   });
 
-  if (res.status === 401) {
-    setAuthToken(null);
-    setCurrentUser(null);
-    window.location.reload();
-    throw new Error('Session expired. Please log in again.');
-  }
-
   if (!res.ok) {
-    const errorData = await res.json().catch(() => ({ detail: res.statusText }));
-    throw new Error(errorData.detail || `Request failed with status ${res.status}`);
+    let errorMsg = `Request failed: ${res.status} ${res.statusText}`;
+    try {
+      const errJson = await res.json();
+      if (errJson.detail) errorMsg = errJson.detail;
+    } catch (e) {
+      // fallback
+    }
+    throw new Error(errorMsg);
   }
 
   return res.json();
 }
 
+export function uploadISOFileWithProgress(formData, onProgress) {
+  return new Promise((resolve, reject) => {
+    const xhr = new XMLHttpRequest();
+    xhr.open('POST', `${API_BASE}/storage/upload`);
+    const token = getAuthToken();
+    if (token) {
+      xhr.setRequestHeader('Authorization', `Bearer ${token}`);
+    }
+
+    xhr.upload.onprogress = (event) => {
+      if (event.lengthComputable && onProgress) {
+        const percent = Math.round((event.loaded / event.total) * 100);
+        onProgress(percent, event.loaded, event.total);
+      }
+    };
+
+    xhr.onload = () => {
+      if (xhr.status >= 200 && xhr.status < 300) {
+        try {
+          resolve(JSON.parse(xhr.responseText));
+        } catch (e) {
+          resolve({ status: 'success' });
+        }
+      } else {
+        try {
+          const err = JSON.parse(xhr.responseText);
+          reject(new Error(err.detail || 'Upload failed'));
+        } catch (e) {
+          reject(new Error(`Upload failed with status ${xhr.status}`));
+        }
+      }
+    };
+
+    xhr.onerror = () => reject(new Error('Network connection error during upload'));
+    xhr.send(formData);
+  });
+}
+
 export const api = {
-  // Auth
+  // Authentication
   login: (username, password) =>
     request('/auth/login', {
       method: 'POST',
       body: { username, password },
     }),
 
-  // Datacenter Overview & Health
-  getOverview: () => request('/datacenter/overview'),
-  getDatacenterOverview: () => request('/datacenter/overview'),
-  getHealth: () => request('/health'),
+  // Datacenter Overview & Metrics
+  getDatacenterOverview: () => request('/overview'),
+  getOverview: () => request('/overview'),
 
-  // Cluster & Multi-Node Orchestration
+  // Cluster & Scale-Out
   getClusterNodes: () => request('/cluster/nodes'),
   getClusterStatus: () => request('/cluster/status'),
   getClusterJoinInfo: () => request('/cluster/join-info'),
-  migrateVM: (vmid, targetNode, online = true, sourceNode = 'pve') =>
-    request(`/vms/${vmid}/migrate`, {
-      method: 'POST',
-      body: { target_node: targetNode, source_node: sourceNode, online },
-    }),
-  migrateLXC: (vmid, targetNode, sourceNode = 'pve') =>
-    request(`/lxc/${vmid}/migrate`, {
-      method: 'POST',
-      body: { target_node: targetNode, source_node: sourceNode, online: true },
-    }),
 
   // Virtual Machines (KVM)
   getVMs: (node = 'pve') => request(`/vms?node=${node}`),
+  getVMDetails: (vmid, node = 'pve') => request(`/vms/${vmid}?node=${node}`),
   createVM: (data) =>
     request('/vms', {
       method: 'POST',
       body: data,
     }),
-  vmAction: (vmid, action, node = 'pve') =>
-    request(`/vms/${vmid}/action?action=${action}&node=${node}`, {
-      method: 'POST',
-    }),
+  startVM: (vmid, node = 'pve') =>
+    request(`/vms/${vmid}/start?node=${node}`, { method: 'POST' }),
+  stopVM: (vmid, node = 'pve') =>
+    request(`/vms/${vmid}/stop?node=${node}`, { method: 'POST' }),
+  rebootVM: (vmid, node = 'pve') =>
+    request(`/vms/${vmid}/reboot?node=${node}`, { method: 'POST' }),
   deleteVM: (vmid, node = 'pve') =>
-    request(`/vms/${vmid}?node=${node}`, {
-      method: 'DELETE',
+    request(`/vms/${vmid}?node=${node}`, { method: 'DELETE' }),
+  migrateVM: (vmid, targetNode, online = true, sourceNode = 'pve') =>
+    request(`/vms/${vmid}/migrate`, {
+      method: 'POST',
+      body: { target_node: targetNode, source_node: sourceNode, online },
     }),
 
-  // LXC Micro-Containers Hub
+  // LXC Containers
   getLXCs: (node = 'pve') => request(`/lxc?node=${node}`),
   createLXC: (data) =>
     request('/lxc', {
       method: 'POST',
       body: data,
     }),
-  lxcAction: (vmid, action, node = 'pve') =>
-    request(`/lxc/${vmid}/action?action=${action}&node=${node}`, {
-      method: 'POST',
-    }),
+  startLXC: (vmid, node = 'pve') =>
+    request(`/lxc/${vmid}/start?node=${node}`, { method: 'POST' }),
+  stopLXC: (vmid, node = 'pve') =>
+    request(`/lxc/${vmid}/stop?node=${node}`, { method: 'POST' }),
+  rebootLXC: (vmid, node = 'pve') =>
+    request(`/lxc/${vmid}/reboot?node=${node}`, { method: 'POST' }),
   deleteLXC: (vmid, node = 'pve') =>
-    request(`/lxc/${vmid}?node=${node}`, {
-      method: 'DELETE',
+    request(`/lxc/${vmid}?node=${node}`, { method: 'DELETE' }),
+  migrateLXC: (vmid, targetNode, sourceNode = 'pve') =>
+    request(`/lxc/${vmid}/migrate`, {
+      method: 'POST',
+      body: { target_node: targetNode, source_node: sourceNode },
     }),
 
-  // App Marketplace
+  // Marketplace
   getMarketplaceApps: () => request('/marketplace/apps'),
   deployMarketplaceApp: (data) =>
-    request('/marketplace/launch', {
+    request('/marketplace/deploy', {
       method: 'POST',
       body: data,
     }),
 
-  // Live Snapshots Engine
+  // Snapshots
   getSnapshots: (vmid, isLXC = false, node = 'pve') =>
     request(`/vms/${vmid}/snapshots?is_lxc=${isLXC ? 'true' : 'false'}&node=${node}`),
   createSnapshot: (vmid, data, isLXC = false, node = 'pve') =>
@@ -170,11 +207,16 @@ export const api = {
       method: 'POST',
       body: { url, filename },
     }),
-  uploadISOFile: (formData) =>
-    request('/storage/upload', {
+  uploadISOFile: (formData, onProgress) => {
+    if (onProgress) {
+      return uploadISOFileWithProgress(formData, onProgress);
+    }
+    return request('/storage/upload', {
       method: 'POST',
       body: formData,
-    }),
+    });
+  },
+  uploadISOFileWithProgress,
   addNFSStorage: (data) =>
     request('/storage/nfs', {
       method: 'POST',

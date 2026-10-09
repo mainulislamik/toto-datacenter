@@ -13,42 +13,53 @@ import {
   Layers,
   Sparkles,
   Search,
-  FileCheck,
-  Zap,
-  Info,
-  ShieldAlert,
-  ArrowRight
+  ShieldCheck,
+  Tag,
+  Check
 } from 'lucide-react';
 import { api } from '../api';
 
-export default function StorageView() {
+export default function StorageView({ onSelectISOForVM }) {
+  const [pools, setPools] = useState([]);
   const [isos, setIsos] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [successMsg, setSuccessMsg] = useState('');
 
-  // 1-Click URL Download
-  const [downloadUrl, setDownloadUrl] = useState('https://releases.ubuntu.com/24.04.1/ubuntu-24.04.1-live-server-amd64.iso');
-  const [downloadFilename, setDownloadFilename] = useState('ubuntu-24.04-live-server.iso');
-  const [downloading, setDownloading] = useState(false);
-  const [urlAnalysis, setUrlAnalysis] = useState(null);
-
-  // File Upload State
+  // Upload state
   const [selectedFile, setSelectedFile] = useState(null);
+  const [fileAnalysis, setFileAnalysis] = useState(null);
   const [uploading, setUploading] = useState(false);
   const [uploadProgress, setUploadProgress] = useState(0);
-  const [fileAnalysis, setFileAnalysis] = useState(null);
+  const [uploadStats, setUploadStats] = useState(null);
   const fileInputRef = useRef(null);
 
-  // Search filter
+  // URL Download state
+  const [downloadUrl, setDownloadUrl] = useState('https://releases.ubuntu.com/24.04.1/ubuntu-24.04.1-live-server-amd64.iso');
+  const [downloadFilename, setDownloadFilename] = useState('ubuntu-24.04.1-live-server-amd64.iso');
+  const [urlAnalysis, setUrlAnalysis] = useState(null);
+  const [downloading, setDownloading] = useState(false);
+
+  // Search & Filter
   const [searchFilter, setSearchFilter] = useState('');
 
-  const loadISOs = async () => {
+  useEffect(() => {
+    loadData();
+  }, []);
+
+  const loadData = async () => {
     setLoading(true);
     setError(null);
     try {
-      const data = await api.getISOs();
-      setIsos(data || []);
+      const [poolsData, isosData] = await Promise.all([
+        api.getStoragePools().catch(() => []),
+        api.getISOs().catch(() => [])
+      ]);
+      setPools(poolsData);
+      setIsos(isosData);
+      if (downloadFilename) {
+        checkUrlAnalysis(downloadFilename);
+      }
     } catch (err) {
       setError(err.message);
     } finally {
@@ -56,25 +67,21 @@ export default function StorageView() {
     }
   };
 
-  useEffect(() => {
-    loadISOs();
-    handleAnalyzeUrl(downloadFilename);
-  }, []);
-
-  const handleAnalyzeUrl = async (name) => {
-    if (!name) return;
+  const loadISOs = async () => {
     try {
-      const res = await api.analyzeISOName(name);
-      setUrlAnalysis(res);
-    } catch (e) {
-      // silent
+      const isosData = await api.getISOs();
+      setIsos(isosData);
+    } catch (err) {
+      setError(err.message);
     }
   };
 
   const handleFileSelect = async (e) => {
-    const file = e.target.files?.[0];
+    const file = e.target.files[0];
     if (!file) return;
     setSelectedFile(file);
+    setUploadProgress(0);
+    setUploadStats(null);
     try {
       const res = await api.analyzeISOName(file.name);
       setFileAnalysis(res);
@@ -86,15 +93,26 @@ export default function StorageView() {
   const handleFileUpload = async () => {
     if (!selectedFile) return;
     setUploading(true);
+    setUploadProgress(0);
     setError(null);
     setSuccessMsg('');
     try {
       const formData = new FormData();
       formData.append('file', selectedFile);
-      const res = await api.uploadISOFile(formData);
+      
+      const res = await api.uploadISOFile(formData, (percent, loaded, total) => {
+        setUploadProgress(percent);
+        setUploadStats({
+          loadedMB: (loaded / (1024 * 1024)).toFixed(1),
+          totalMB: (total / (1024 * 1024)).toFixed(1)
+        });
+      });
+
       setSuccessMsg(`ISO Uploaded & Classified Successfully: ${res.analysis?.distro || res.filename}`);
       setSelectedFile(null);
       setFileAnalysis(null);
+      setUploadProgress(0);
+      setUploadStats(null);
       if (fileInputRef.current) fileInputRef.current.value = '';
       loadISOs();
     } catch (err) {
@@ -118,6 +136,15 @@ export default function StorageView() {
       setError(err.message);
     } finally {
       setDownloading(false);
+    }
+  };
+
+  const checkUrlAnalysis = async (filename) => {
+    try {
+      const res = await api.analyzeISOName(filename);
+      setUrlAnalysis(res);
+    } catch (e) {
+      // silent
     }
   };
 
@@ -150,7 +177,7 @@ export default function StorageView() {
         </div>
         <div className="flex items-center gap-3">
           <button
-            onClick={loadISOs}
+            onClick={loadData}
             disabled={loading}
             className="flex items-center gap-2 px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-sm font-medium transition"
           >
@@ -194,8 +221,10 @@ export default function StorageView() {
               </span>
             </div>
 
-            <div className="border-2 border-dashed border-slate-200 hover:border-indigo-400 bg-slate-50/50 hover:bg-indigo-50/20 rounded-xl p-6 text-center transition cursor-pointer"
-                 onClick={() => fileInputRef.current?.click()}>
+            <div 
+              className="border-2 border-dashed border-slate-200 hover:border-indigo-400 bg-slate-50/50 hover:bg-indigo-50/20 rounded-xl p-6 text-center transition cursor-pointer"
+              onClick={() => fileInputRef.current?.click()}
+            >
               <input
                 type="file"
                 ref={fileInputRef}
@@ -215,6 +244,31 @@ export default function StorageView() {
                 </p>
               </div>
             </div>
+
+            {/* Live Upload Progress Bar */}
+            {uploading && (
+              <div className="mt-4 p-4 bg-slate-50 border border-slate-200 rounded-xl space-y-2">
+                <div className="flex justify-between text-xs font-semibold text-slate-700">
+                  <span className="flex items-center gap-1.5">
+                    <RefreshCw className="w-3.5 h-3.5 animate-spin text-indigo-600" />
+                    {uploadProgress < 100 ? 'Streaming ISO to Proxmox Staging...' : 'Storing into Proxmox Vault...'}
+                  </span>
+                  <span>{uploadProgress}%</span>
+                </div>
+                <div className="w-full bg-slate-200 h-2.5 rounded-full overflow-hidden">
+                  <div 
+                    className="bg-indigo-600 h-full transition-all duration-200 rounded-full"
+                    style={{ width: `${uploadProgress}%` }}
+                  />
+                </div>
+                {uploadStats && (
+                  <div className="flex justify-between text-[11px] text-slate-500">
+                    <span>Transferred: {uploadStats.loadedMB} MB</span>
+                    <span>Total: {uploadStats.totalMB} MB</span>
+                  </div>
+                )}
+              </div>
+            )}
 
             {/* Live AI Classification Card for Selected File */}
             {fileAnalysis && (
@@ -278,236 +332,251 @@ export default function StorageView() {
                 </div>
               </div>
               <span className="text-xs font-semibold px-2 py-0.5 bg-emerald-50 text-emerald-700 rounded-full border border-emerald-200">
-                Direct SSH Stream
+                High Speed Async
               </span>
             </div>
 
-            <form onSubmit={handleDownload} className="space-y-3">
+            <form onSubmit={handleDownload} className="space-y-4">
               <div>
-                <label className="block text-xs font-semibold text-slate-600 mb-1">
-                  Remote ISO Image Direct URL:
+                <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5">
+                  Direct ISO Download URL
                 </label>
                 <input
                   type="url"
+                  required
                   value={downloadUrl}
                   onChange={(e) => {
                     setDownloadUrl(e.target.value);
-                    const suggestedName = e.target.value.split('/').pop()?.split('?')[0] || 'os.iso';
-                    setDownloadFilename(suggestedName);
-                    handleAnalyzeUrl(suggestedName);
+                    const fn = e.target.value.split('/').pop().split('?')[0];
+                    if (fn && fn.endsWith('.iso')) {
+                      setDownloadFilename(fn);
+                      checkUrlAnalysis(fn);
+                    }
                   }}
-                  placeholder="https://releases.ubuntu.com/24.04/.../ubuntu-server.iso"
-                  required
-                  className="w-full px-3.5 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-mono focus:bg-white focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                  placeholder="https://releases.ubuntu.com/24.04/ubuntu-24.04-live-server-amd64.iso"
+                  className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:bg-white focus:outline-none focus:ring-2 focus:ring-emerald-500 font-mono text-xs text-slate-800"
                 />
               </div>
 
               <div>
-                <label className="block text-xs font-semibold text-slate-600 mb-1">
-                  Target Filename:
+                <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5">
+                  Target Filename (.iso)
                 </label>
                 <input
                   type="text"
+                  required
                   value={downloadFilename}
                   onChange={(e) => {
                     setDownloadFilename(e.target.value);
-                    handleAnalyzeUrl(e.target.value);
+                    checkUrlAnalysis(e.target.value);
                   }}
-                  required
-                  className="w-full px-3.5 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-mono focus:bg-white focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                  className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:bg-white focus:outline-none focus:ring-2 focus:ring-emerald-500 font-mono text-xs text-slate-800"
                 />
               </div>
-
-              {/* Live Classifier Card for URL */}
-              {urlAnalysis && (
-                <div className="p-4 bg-emerald-50/70 border border-emerald-100 rounded-xl">
-                  <div className="flex items-center justify-between mb-2">
-                    <span className="text-xs font-bold text-emerald-900 flex items-center gap-1.5 uppercase tracking-wider">
-                      <Sparkles className="w-3.5 h-3.5 text-emerald-600" /> Target OS Classification
-                    </span>
-                    <span className="text-xs px-2 py-0.5 font-bold rounded bg-emerald-700 text-white">
-                      {urlAnalysis.category}
-                    </span>
-                  </div>
-                  <div className="text-sm font-bold text-slate-900">
-                    {urlAnalysis.distro} ({urlAnalysis.version})
-                  </div>
-                  <div className="mt-2 flex flex-wrap gap-1.5">
-                    {urlAnalysis.tags?.map((t, idx) => (
-                      <span key={idx} className="text-[10px] font-semibold px-2 py-0.5 bg-emerald-100/80 text-emerald-800 rounded">
-                        {t}
-                      </span>
-                    ))}
-                  </div>
-                </div>
-              )}
-
-              <div className="pt-2">
-                <button
-                  type="submit"
-                  disabled={downloading}
-                  className="w-full py-2.5 px-4 bg-slate-900 hover:bg-slate-800 disabled:opacity-50 text-white rounded-xl text-sm font-semibold transition flex items-center justify-center gap-2 shadow-sm"
-                >
-                  {downloading ? (
-                    <>
-                      <RefreshCw className="w-4 h-4 animate-spin" />
-                      Dispatching to Proxmox Node...
-                    </>
-                  ) : (
-                    <>
-                      <Download className="w-4 h-4 text-emerald-400" />
-                      Download to Proxmox Vault
-                    </>
-                  )}
-                </button>
-              </div>
             </form>
+
+            {/* Live AI Classification Card for URL */}
+            {urlAnalysis && (
+              <div className="mt-4 p-4 bg-emerald-50/70 border border-emerald-100 rounded-xl">
+                <div className="flex items-center justify-between mb-2">
+                  <span className="text-xs font-bold text-emerald-900 flex items-center gap-1.5 uppercase tracking-wider">
+                    <Sparkles className="w-3.5 h-3.5 text-emerald-600" /> AI Classification Detected
+                  </span>
+                  <span className="text-xs px-2 py-0.5 font-bold rounded bg-emerald-600 text-white">
+                    {urlAnalysis.category}
+                  </span>
+                </div>
+                <div className="text-sm font-bold text-slate-900">
+                  {urlAnalysis.distro} ({urlAnalysis.version})
+                </div>
+                <p className="text-xs text-slate-600 mt-1">
+                  {urlAnalysis.description}
+                </p>
+                <div className="mt-3 pt-3 border-t border-emerald-100/80 flex items-center justify-between text-xs text-slate-700">
+                  <span>Recommended Specs:</span>
+                  <span className="font-semibold text-emerald-900">
+                    {urlAnalysis.recommended_specs.cores} vCPU • {urlAnalysis.recommended_specs.memory_mb} MB RAM • {urlAnalysis.recommended_specs.disk_gb} GB SSD
+                  </span>
+                </div>
+              </div>
+            )}
+          </div>
+
+          <div className="mt-6 pt-4 border-t border-slate-100">
+            <button
+              onClick={handleDownload}
+              disabled={!downloadUrl || downloading}
+              className="w-full py-2.5 px-4 bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white rounded-xl text-sm font-semibold transition flex items-center justify-center gap-2 shadow-sm"
+            >
+              {downloading ? (
+                <>
+                  <RefreshCw className="w-4 h-4 animate-spin" />
+                  Initiating Proxmox Download...
+                </>
+              ) : (
+                <>
+                  <Download className="w-4 h-4" />
+                  Download to Proxmox
+                </>
+              )}
+            </button>
           </div>
         </div>
       </div>
 
-      {/* ISO Vault Table with AI Detection Badges */}
+      {/* Physical Storage Pools */}
+      <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm">
+        <h3 className="text-base font-bold text-slate-900 mb-4 flex items-center gap-2">
+          <HardDrive className="w-5 h-5 text-blue-600" />
+          Active Physical Storage Pools
+        </h3>
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          {pools.map((p, idx) => {
+            const usedGB = ((p.used || 0) / (1024 * 1024 * 1024)).toFixed(2);
+            const totalGB = ((p.total || 0) / (1024 * 1024 * 1024)).toFixed(2);
+            const pct = p.total ? Math.round((p.used / p.total) * 100) : 0;
+            return (
+              <div key={idx} className="p-4 rounded-xl border border-slate-200 bg-slate-50/50 space-y-3">
+                <div className="flex items-center justify-between">
+                  <span className="font-bold text-slate-900">{p.storage}</span>
+                  <span className="text-xs px-2.5 py-0.5 rounded-full font-semibold bg-blue-100 text-blue-800">
+                    {p.type.toUpperCase()}
+                  </span>
+                </div>
+                <div className="space-y-1.5">
+                  <div className="flex justify-between text-xs text-slate-500">
+                    <span>Capacity Usage</span>
+                    <span className="font-medium text-slate-700">{usedGB} GB / {totalGB} GB ({pct}%)</span>
+                  </div>
+                  <div className="w-full bg-slate-200 h-2 rounded-full overflow-hidden">
+                    <div 
+                      className={`h-full rounded-full transition-all duration-300 ${
+                        pct > 85 ? 'bg-rose-500' : pct > 60 ? 'bg-amber-500' : 'bg-blue-600'
+                      }`}
+                      style={{ width: `${pct}%` }}
+                    />
+                  </div>
+                </div>
+                <div className="text-xs text-slate-400 font-mono">
+                  Target Content: {p.content || 'images, iso, rootdir'}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+
+      {/* ISO Images Vault Table */}
       <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
-        <div className="p-6 border-b border-slate-100 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+        <div className="p-6 border-b border-slate-100 flex flex-col md:flex-row md:items-center justify-between gap-4">
           <div>
-            <h3 className="text-lg font-bold text-slate-900 flex items-center gap-2">
-              Installed ISO Images in Vault ({filteredISOs.length})
+            <h3 className="text-base font-bold text-slate-900 flex items-center gap-2">
+              <Disc className="w-5 h-5 text-indigo-600" />
+              Installed Bootable ISO Vault ({filteredISOs.length})
             </h3>
-            <p className="text-xs text-slate-500">
-              Classified operating system images ready for 1-click VM creation and boot attachment.
-            </p>
+            <p className="text-xs text-slate-500">All available OS images ready for 1-click VM creation</p>
           </div>
-          <div className="relative w-full sm:w-64">
+          <div className="relative">
             <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
             <input
               type="text"
+              placeholder="Search OS, distro or filename..."
               value={searchFilter}
               onChange={(e) => setSearchFilter(e.target.value)}
-              placeholder="Filter by OS or filename..."
-              className="w-full pl-9 pr-3 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-xs focus:bg-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+              className="pl-9 pr-4 py-2 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500 w-full md:w-64"
             />
           </div>
         </div>
 
-        {loading ? (
-          <div className="p-12 text-center text-slate-400 flex flex-col items-center gap-3">
-            <RefreshCw className="w-8 h-8 animate-spin text-blue-500" />
-            <p className="text-sm font-medium">Scanning Proxmox storage vault...</p>
-          </div>
-        ) : filteredISOs.length === 0 ? (
-          <div className="p-12 text-center text-slate-500 flex flex-col items-center gap-3">
-            <div className="p-4 bg-slate-50 rounded-full border border-slate-200 text-slate-400">
-              <Disc className="w-8 h-8" />
-            </div>
-            <div>
-              <p className="text-base font-semibold text-slate-800">No ISO images found</p>
-              <p className="text-xs text-slate-400 mt-0.5">
-                Upload or download an ISO above to start provisioning virtual machines.
-              </p>
-            </div>
-          </div>
-        ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full text-left text-sm">
-              <thead className="bg-slate-50 text-slate-600 text-xs font-bold uppercase tracking-wider border-b border-slate-200">
+        <div className="overflow-x-auto">
+          <table className="w-full text-left text-sm text-slate-600">
+            <thead className="bg-slate-50 text-xs uppercase font-semibold text-slate-500 border-b border-slate-200">
+              <tr>
+                <th className="px-6 py-3.5">OS & Distribution</th>
+                <th className="px-6 py-3.5">Category & Arch</th>
+                <th className="px-6 py-3.5">Recommended Hardware</th>
+                <th className="px-6 py-3.5">File Size</th>
+                <th className="px-6 py-3.5 text-right">Actions</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-slate-100">
+              {filteredISOs.length === 0 ? (
                 <tr>
-                  <th className="px-6 py-3.5">Operating System & Distro</th>
-                  <th className="px-6 py-3.5">Classification & Category</th>
-                  <th className="px-6 py-3.5">Architecture & Boot</th>
-                  <th className="px-6 py-3.5">Size & Storage</th>
-                  <th className="px-6 py-3.5">Recommended Hardware</th>
-                  <th className="px-6 py-3.5 text-right">Actions</th>
+                  <td colSpan="5" className="px-6 py-12 text-center text-slate-400">
+                    <Disc className="w-10 h-10 mx-auto mb-2 text-slate-300" />
+                    No ISO images found in vault. Upload or download an ISO above.
+                  </td>
                 </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-100">
-                {filteredISOs.map((iso, idx) => {
+              ) : (
+                filteredISOs.map((iso, idx) => {
+                  const sizeMB = ((iso.size || 0) / (1024 * 1024)).toFixed(1);
                   const analysis = iso.analysis || {};
-                  const sizeMB = iso.size ? (iso.size / (1024 * 1024)).toFixed(0) : '—';
-                  const sizeGB = iso.size ? (iso.size / (1024 * 1024 * 1024)).toFixed(2) : null;
-                  
                   return (
                     <tr key={idx} className="hover:bg-slate-50/80 transition">
                       <td className="px-6 py-4">
-                        <div className="flex items-center gap-3">
-                          <div className="p-2.5 bg-blue-50 text-blue-600 rounded-xl border border-blue-100 flex-shrink-0">
-                            <Disc className="w-5 h-5" />
-                          </div>
-                          <div>
-                            <div className="font-bold text-slate-900 flex items-center gap-2">
-                              {analysis.distro || iso.filename}
-                              {analysis.version && (
-                                <span className="text-xs font-semibold px-2 py-0.5 rounded bg-slate-100 text-slate-700 border border-slate-200">
-                                  {analysis.version}
-                                </span>
-                              )}
-                            </div>
-                            <div className="text-xs font-mono text-slate-400 mt-0.5">
-                              {iso.filename || iso.volid}
-                            </div>
-                          </div>
+                        <div className="font-bold text-slate-900 flex items-center gap-2">
+                          <Disc className="w-4 h-4 text-indigo-500 flex-shrink-0" />
+                          <span>{analysis.distro || iso.filename}</span>
+                          {analysis.version && (
+                            <span className="text-xs px-2 py-0.5 bg-slate-100 text-slate-700 rounded-md font-medium">
+                              v{analysis.version}
+                            </span>
+                          )}
+                        </div>
+                        <div className="text-xs text-slate-400 font-mono mt-0.5">
+                          {iso.filename}
                         </div>
                       </td>
-
                       <td className="px-6 py-4">
-                        <div className="space-y-1">
-                          <span className="inline-block text-xs font-bold px-2.5 py-0.5 rounded-full bg-blue-50 text-blue-700 border border-blue-200">
-                            {analysis.category || 'General OS'}
+                        <div className="flex items-center gap-2">
+                          <span className={`text-xs px-2.5 py-1 rounded-full font-semibold ${
+                            analysis.os_family === 'Windows' ? 'bg-blue-100 text-blue-800' :
+                            analysis.os_family === 'BSD' ? 'bg-orange-100 text-orange-800' :
+                            'bg-emerald-100 text-emerald-800'
+                          }`}>
+                            {analysis.category || 'Linux OS'}
                           </span>
-                          <div className="flex flex-wrap gap-1">
-                            {analysis.tags?.slice(0, 3).map((t, tidx) => (
-                              <span key={tidx} className="text-[10px] font-medium px-1.5 py-0.5 bg-slate-100 text-slate-600 rounded">
-                                {t}
-                              </span>
-                            ))}
-                          </div>
+                          <span className="text-xs px-2 py-0.5 bg-slate-100 text-slate-600 rounded font-mono">
+                            {analysis.arch || 'x86_64'}
+                          </span>
                         </div>
                       </td>
-
-                      <td className="px-6 py-4">
-                        <div className="text-xs font-medium text-slate-800">
-                          {analysis.arch || 'x86_64'}
-                        </div>
-                        <div className="text-[11px] text-slate-400">
-                          {analysis.boot_type || 'UEFI / BIOS'}
-                        </div>
-                      </td>
-
-                      <td className="px-6 py-4">
-                        <div className="text-xs font-bold text-slate-800">
-                          {sizeGB ? `${sizeGB} GB` : `${sizeMB} MB`}
-                        </div>
-                        <div className="text-[11px] font-mono text-slate-400">
-                          local:iso
-                        </div>
-                      </td>
-
                       <td className="px-6 py-4">
                         {analysis.recommended_specs ? (
-                          <div className="text-xs text-slate-600">
-                            <div className="font-semibold text-slate-900">
-                              {analysis.recommended_specs.cores} vCPU / {analysis.recommended_specs.memory_mb} MB RAM
-                            </div>
-                            <div className="text-[11px] text-slate-400">
-                              Min SSD: {analysis.recommended_specs.disk_gb} GB
-                            </div>
+                          <div className="text-xs text-slate-700 flex items-center gap-2">
+                            <span className="font-medium bg-slate-100 px-2 py-1 rounded">
+                              {analysis.recommended_specs.cores} vCPU
+                            </span>
+                            <span className="font-medium bg-slate-100 px-2 py-1 rounded">
+                              {analysis.recommended_specs.memory_mb} MB RAM
+                            </span>
+                            <span className="font-medium bg-slate-100 px-2 py-1 rounded">
+                              {analysis.recommended_specs.disk_gb} GB Disk
+                            </span>
                           </div>
                         ) : (
                           <span className="text-xs text-slate-400">—</span>
                         )}
                       </td>
-
+                      <td className="px-6 py-4 font-mono text-xs text-slate-600">
+                        {sizeMB} MB
+                      </td>
                       <td className="px-6 py-4 text-right">
-                        <span className="inline-flex items-center gap-1 text-xs font-semibold text-emerald-600 bg-emerald-50 px-2.5 py-1 rounded-lg border border-emerald-200">
-                          <FileCheck className="w-3.5 h-3.5" /> Ready for VM
-                        </span>
+                        <button
+                          onClick={() => onSelectISOForVM && onSelectISOForVM(iso.volid, analysis)}
+                          className="px-3.5 py-1.5 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 rounded-lg text-xs font-semibold transition inline-flex items-center gap-1.5"
+                        >
+                          <Sparkles className="w-3.5 h-3.5" />
+                          Launch VM
+                        </button>
                       </td>
                     </tr>
                   );
-                })}
-              </tbody>
-            </table>
-          </div>
-        )}
+                })
+              )}
+            </tbody>
+          </table>
+        </div>
       </div>
     </div>
   );
