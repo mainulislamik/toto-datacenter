@@ -10,7 +10,9 @@ import {
   AlertTriangle,
   ArrowUpRight,
   ShieldCheck,
-  Plus
+  Plus,
+  ShoppingBag,
+  Zap
 } from 'lucide-react';
 import { api } from '../api';
 
@@ -23,7 +25,8 @@ export default function OverviewView({ onNavigate, user }) {
     setLoading(true);
     setError(null);
     try {
-      const res = await api.getDatacenterOverview();
+      const fetchFn = api.getDatacenterOverview || api.getOverview;
+      const res = await fetchFn();
       setData(res);
     } catch (err) {
       setError(err.message || 'Failed to load datacenter overview');
@@ -70,7 +73,7 @@ export default function OverviewView({ onNavigate, user }) {
             </span>
           </div>
           <p className="text-xs text-slate-500 mt-1">
-            Proxmox VE 8.4 Hypervisor Cluster • Bare-Metal KVM Engine • Storage: Second SSD (/dev/sda1)
+            Proxmox VE 8.4 Hypervisor Cluster • Bare-Metal KVM & LXC Engine • Storage: Second SSD (/dev/sda1)
           </p>
         </div>
 
@@ -85,11 +88,11 @@ export default function OverviewView({ onNavigate, user }) {
           </button>
           
           <button
-            onClick={() => onNavigate('vms')}
+            onClick={() => onNavigate('marketplace')}
             className="inline-flex items-center space-x-1.5 px-3.5 py-2 bg-sky-700 hover:bg-sky-800 text-white text-xs font-bold rounded-lg shadow-sm transition"
           >
-            <Plus className="w-4 h-4" />
-            <span>Deploy VM</span>
+            <ShoppingBag className="w-4 h-4" />
+            <span>1-Click Marketplace</span>
           </button>
         </div>
       </div>
@@ -115,24 +118,26 @@ export default function OverviewView({ onNavigate, user }) {
             <span className="text-2xl font-extrabold text-slate-900">{data?.nodes_count || 1}</span>
             <span className="text-xs font-medium text-emerald-600 font-semibold">100% Online</span>
           </div>
-          <p className="mt-1 text-xs text-slate-400">Node ID: pve (KVM Nested)</p>
+          <p className="mt-1 text-xs text-slate-400">Node ID: pve (KVM & LXC Ready)</p>
         </div>
 
         {/* Metric 2: VMs Fleet */}
         <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-sm">
           <div className="flex items-center justify-between">
-            <span className="text-xs font-bold text-slate-500 uppercase tracking-wider">Virtual Machines</span>
+            <span className="text-xs font-bold text-slate-500 uppercase tracking-wider">Compute Instances</span>
             <div className="w-8 h-8 rounded-lg bg-indigo-100 text-indigo-700 flex items-center justify-center">
               <Layers className="w-4 h-4" />
             </div>
           </div>
           <div className="mt-2 flex items-baseline space-x-2">
-            <span className="text-2xl font-extrabold text-slate-900">{data?.vms_total || 0}</span>
+            <span className="text-2xl font-extrabold text-slate-900">
+              {(data?.vms_total || 0) + (data?.lxcs_total || 0)}
+            </span>
             <span className="text-xs font-semibold text-emerald-700 bg-emerald-50 px-1.5 py-0.5 rounded border border-emerald-200">
-              {data?.vms_running || 0} Running
+              {(data?.vms_running || 0) + (data?.lxcs_running || 0)} Running
             </span>
           </div>
-          <p className="mt-1 text-xs text-slate-400">KVM Hardware Virtualized</p>
+          <p className="mt-1 text-xs text-slate-400">KVM VMs & LXC Containers</p>
         </div>
 
         {/* Metric 3: RAM Usage */}
@@ -145,16 +150,16 @@ export default function OverviewView({ onNavigate, user }) {
           </div>
           <div className="mt-2 flex items-baseline space-x-2">
             <span className="text-2xl font-extrabold text-slate-900">
-              {data ? `${data.memory.usage_pct}%` : '—'}
+              {data?.memory ? `${data.memory.usage_pct}%` : '—'}
             </span>
             <span className="text-xs font-medium text-slate-500">
-              {data ? `${formatBytes(data.memory.used_bytes)} / ${formatBytes(data.memory.total_bytes)}` : '—'}
+              {data?.memory ? `${formatBytes(data.memory.used_bytes)} / ${formatBytes(data.memory.total_bytes)}` : '—'}
             </span>
           </div>
           <div className="mt-2 w-full bg-slate-100 rounded-full h-1.5 overflow-hidden">
             <div 
               className="bg-amber-500 h-1.5 rounded-full transition-all duration-500" 
-              style={{ width: `${Math.min(data?.memory.usage_pct || 0, 100)}%` }}
+              style={{ width: `${Math.min(data?.memory?.usage_pct || 0, 100)}%` }}
             ></div>
           </div>
         </div>
@@ -169,16 +174,16 @@ export default function OverviewView({ onNavigate, user }) {
           </div>
           <div className="mt-2 flex items-baseline space-x-2">
             <span className="text-2xl font-extrabold text-slate-900">
-              {data ? `${data.storage.usage_pct}%` : '—'}
+              {data?.storage ? `${data.storage.usage_pct}%` : '—'}
             </span>
             <span className="text-xs font-medium text-slate-500">
-              {data ? `${formatBytes(data.storage.used_bytes)} / ${formatBytes(data.storage.total_bytes)}` : '—'}
+              {data?.storage ? `${formatBytes(data.storage.used_bytes)} / ${formatBytes(data.storage.total_bytes)}` : '—'}
             </span>
           </div>
           <div className="mt-2 w-full bg-slate-100 rounded-full h-1.5 overflow-hidden">
             <div 
               className="bg-emerald-600 h-1.5 rounded-full transition-all duration-500" 
-              style={{ width: `${Math.min(data?.storage.usage_pct || 0, 100)}%` }}
+              style={{ width: `${Math.min(data?.storage?.usage_pct || 0, 100)}%` }}
             ></div>
           </div>
         </div>
@@ -267,28 +272,28 @@ export default function OverviewView({ onNavigate, user }) {
       {/* Fast Architectural Guides */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
         <div 
-          onClick={() => onNavigate('vms')}
+          onClick={() => onNavigate('marketplace')}
           className="bg-white p-5 rounded-xl border border-slate-200 hover:border-sky-500 hover:shadow-md transition cursor-pointer"
         >
           <div className="w-10 h-10 rounded-lg bg-sky-50 text-sky-700 flex items-center justify-center font-bold mb-3 border border-sky-200">
-            <Layers className="w-5 h-5" />
+            <ShoppingBag className="w-5 h-5" />
           </div>
-          <h3 className="text-sm font-bold text-slate-900">Virtual Machine Lifecycle</h3>
+          <h3 className="text-sm font-bold text-slate-900">1-Click App Marketplace</h3>
           <p className="text-xs text-slate-500 mt-1">
-            Deploy VMs, connect to live Web VNC Console, configure ISO boot disks, and control power state.
+            Deploy pre-tuned Docker, Nginx, PostgreSQL 16, and Redis stacks in under 5 seconds.
           </p>
         </div>
 
         <div 
-          onClick={() => onNavigate('users')}
+          onClick={() => onNavigate('lxc')}
           className="bg-white p-5 rounded-xl border border-slate-200 hover:border-sky-500 hover:shadow-md transition cursor-pointer"
         >
-          <div className="w-10 h-10 rounded-lg bg-indigo-50 text-indigo-700 flex items-center justify-center font-bold mb-3 border border-indigo-200">
-            <ShieldCheck className="w-5 h-5" />
+          <div className="w-10 h-10 rounded-lg bg-amber-50 text-amber-700 flex items-center justify-center font-bold mb-3 border border-amber-200">
+            <Zap className="w-5 h-5" />
           </div>
-          <h3 className="text-sm font-bold text-slate-900">Multi-Tenant RBAC & Quotas</h3>
+          <h3 className="text-sm font-bold text-slate-900">LXC Micro-Containers</h3>
           <p className="text-xs text-slate-500 mt-1">
-            Create tenant accounts, assign maximum vCPU/RAM/Disk budgets, and isolate client workloads.
+            Ultra-fast lightweight micro-containers consuming less than 20MB RAM with live snapshots.
           </p>
         </div>
 

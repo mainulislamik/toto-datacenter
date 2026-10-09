@@ -70,6 +70,7 @@ export const api = {
 
   // Datacenter & Telemetry
   getOverview: () => request('/datacenter/overview'),
+  getDatacenterOverview: () => request('/datacenter/overview'),
   getRRDTelemetry: (timeframe = 'hour') => request(`/telemetry/rrd?timeframe=${timeframe}`),
 
   // Virtual Machines (KVM)
@@ -98,6 +99,7 @@ export const api = {
 
   // Storage & ISO
   getISOs: () => request('/storage/isos'),
+  uploadISOFromURL: (url, filename) => request('/storage/upload-url', { method: 'POST', body: JSON.stringify({ url, filename }) }),
   uploadISOUtil: (payload) => request('/storage/upload-url', { method: 'POST', body: JSON.stringify(payload) }),
 
   // Multi-Tenancy & Users
