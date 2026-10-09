@@ -1,4 +1,4 @@
-// Central API client for Toto Datacenter Control Panel (Enterprise v2.0)
+// Central API client for Toto Datacenter Control Panel (Enterprise Multi-Node v2.5)
 
 const API_BASE = '/api';
 
@@ -80,67 +80,81 @@ export const api = {
   getDatacenterOverview: () => request('/datacenter/overview'),
   getHealth: () => request('/health'),
 
+  // Cluster & Multi-Node Orchestration
+  getClusterNodes: () => request('/cluster/nodes'),
+  getClusterStatus: () => request('/cluster/status'),
+  getClusterJoinInfo: () => request('/cluster/join-info'),
+  migrateVM: (vmid, targetNode, online = true, sourceNode = 'pve') =>
+    request(`/vms/${vmid}/migrate`, {
+      method: 'POST',
+      body: { target_node: targetNode, source_node: sourceNode, online },
+    }),
+  migrateLXC: (vmid, targetNode, sourceNode = 'pve') =>
+    request(`/lxc/${vmid}/migrate`, {
+      method: 'POST',
+      body: { target_node: targetNode, source_node: sourceNode, online: true },
+    }),
+
   // Virtual Machines (KVM)
-  getVMs: () => request('/vms'),
+  getVMs: (node = 'pve') => request(`/vms?node=${node}`),
   createVM: (data) =>
     request('/vms', {
       method: 'POST',
       body: data,
     }),
-  vmAction: (vmid, action) =>
-    request(`/vms/${vmid}/action?action=${action}`, {
+  vmAction: (vmid, action, node = 'pve') =>
+    request(`/vms/${vmid}/action?action=${action}&node=${node}`, {
       method: 'POST',
     }),
-  deleteVM: (vmid) =>
-    request(`/vms/${vmid}`, {
+  deleteVM: (vmid, node = 'pve') =>
+    request(`/vms/${vmid}?node=${node}`, {
       method: 'DELETE',
     }),
-  getVMConsole: (vmid) => request(`/vms/${vmid}/console`),
 
   // LXC Micro-Containers Hub
-  getLXCs: () => request('/lxc'),
-  getLXCTemplates: () => request('/lxc/templates'),
+  getLXCs: (node = 'pve') => request(`/lxc?node=${node}`),
   createLXC: (data) =>
     request('/lxc', {
       method: 'POST',
       body: data,
     }),
-  lxcAction: (vmid, action) =>
-    request(`/lxc/${vmid}/action?action=${action}`, {
+  lxcAction: (vmid, action, node = 'pve') =>
+    request(`/lxc/${vmid}/action?action=${action}&node=${node}`, {
       method: 'POST',
     }),
-  deleteLXC: (vmid) =>
-    request(`/lxc/${vmid}`, {
+  deleteLXC: (vmid, node = 'pve') =>
+    request(`/lxc/${vmid}?node=${node}`, {
       method: 'DELETE',
     }),
 
   // App Marketplace
   getMarketplaceApps: () => request('/marketplace/apps'),
   deployMarketplaceApp: (data) =>
-    request('/marketplace/deploy', {
+    request('/marketplace/launch', {
       method: 'POST',
       body: data,
     }),
 
   // Live Snapshots Engine
-  getSnapshots: (vmid, isLXC = false) =>
-    request(`/snapshots/${vmid}?is_lxc=${isLXC ? 'true' : 'false'}`),
-  createSnapshot: (vmid, data) =>
-    request(`/snapshots/${vmid}`, {
+  getSnapshots: (vmid, isLXC = false, node = 'pve') =>
+    request(`/vms/${vmid}/snapshots?is_lxc=${isLXC ? 'true' : 'false'}&node=${node}`),
+  createSnapshot: (vmid, data, isLXC = false, node = 'pve') =>
+    request(`/vms/${vmid}/snapshots?is_lxc=${isLXC ? 'true' : 'false'}&node=${node}`, {
       method: 'POST',
       body: data,
     }),
-  rollbackSnapshot: (vmid, snapname, isLXC = false) =>
-    request(`/snapshots/${vmid}/rollback?snapname=${encodeURIComponent(snapname)}&is_lxc=${isLXC ? 'true' : 'false'}`, {
+  rollbackSnapshot: (vmid, snapname, isLXC = false, node = 'pve') =>
+    request(`/vms/${vmid}/snapshots/${encodeURIComponent(snapname)}/rollback?is_lxc=${isLXC ? 'true' : 'false'}&node=${node}`, {
       method: 'POST',
     }),
-  deleteSnapshot: (vmid, snapname, isLXC = false) =>
-    request(`/snapshots/${vmid}/${encodeURIComponent(snapname)}?is_lxc=${isLXC ? 'true' : 'false'}`, {
+  deleteSnapshot: (vmid, snapname, isLXC = false, node = 'pve') =>
+    request(`/vms/${vmid}/snapshots/${encodeURIComponent(snapname)}?is_lxc=${isLXC ? 'true' : 'false'}&node=${node}`, {
       method: 'DELETE',
     }),
 
   // Storage & ISO Vault
-  getISOs: () => request('/storage/isos'),
+  getStoragePools: (node = 'pve') => request(`/storage/pools?node=${node}`),
+  getISOs: (node = 'pve', storage = 'local') => request(`/storage/isos?node=${node}&storage=${storage}`),
   analyzeISOName: (filename) =>
     request('/storage/analyze-name', {
       method: 'POST',
@@ -161,20 +175,13 @@ export const api = {
       method: 'POST',
       body: formData,
     }),
-
-  // Users & Multi-Tenancy (Super Admin)
-  getUsers: () => request('/users'),
-  createUser: (data) =>
-    request('/users', {
+  addNFSStorage: (data) =>
+    request('/storage/nfs', {
       method: 'POST',
       body: data,
     }),
-  deleteUser: (userId) =>
-    request(`/users/${userId}`, {
-      method: 'DELETE',
-    }),
 
-  // GitOps & Telemetry
-  getGitStatus: () => request('/git/status'),
-  getTelemetryRRD: () => request('/telemetry/rrd'),
+  // Users & Multi-Tenancy (Super Admin)
+  getUsers: () => request('/auth/users'),
+  getAuthMe: () => request('/auth/me'),
 };

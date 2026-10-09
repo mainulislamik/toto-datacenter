@@ -32,6 +32,7 @@ export default function Sidebar({
 
   const computeItems = [
     { id: 'overview', label: 'Datacenter Overview', icon: Activity, badge: 'Live' },
+    { id: 'cluster', label: 'Cluster Nodes & Scale-Out', icon: Cpu, badge: 'Nodes' },
     { id: 'vms', label: 'KVM Virtual Machines', icon: Server, badge: 'KVM' },
     { id: 'lxc', label: 'LXC Micro-Containers', icon: Zap, badge: 'Sub-Sec' },
     { id: 'marketplace', label: '1-Click App Store', icon: ShoppingBag, badge: 'New' },
@@ -128,7 +129,7 @@ export default function Sidebar({
               <div className="flex items-center space-x-1.5">
                 <span className="font-black text-sm text-slate-900 tracking-tight">TOTO CLOUD</span>
                 <span className="text-[9px] font-black uppercase tracking-wider px-1.5 py-0.2 bg-sky-100 text-sky-800 rounded border border-sky-200">
-                  v2.0
+                  v2.5
                 </span>
               </div>
               <div className="text-[11px] font-bold text-slate-600 tracking-tight">
@@ -154,8 +155,8 @@ export default function Sidebar({
                 <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-emerald-500"></span>
               </span>
               <div>
-                <div className="text-[11px] font-black text-slate-800 uppercase tracking-wider">Node pve Online</div>
-                <div className="text-[10px] font-bold text-slate-600">4 Cores • 145GB SSD Pool</div>
+                <div className="text-[11px] font-black text-slate-800 uppercase tracking-wider">Cluster toto-dc</div>
+                <div className="text-[10px] font-bold text-slate-600">Corosync VoteQuorum OK</div>
               </div>
             </div>
             <a 

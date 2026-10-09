@@ -15,11 +15,12 @@ import {
   Lock,
   Camera,
   Terminal,
-  Zap
+  Zap,
+  ArrowRightLeft
 } from 'lucide-react';
 import { api } from '../api';
 
-export default function LXCHubView({ onOpenConsole, onOpenSnapshots }) {
+export default function LXCHubView({ onOpenConsole, onOpenSnapshots, onOpenMigrate }) {
   const [lxcs, setLxcs] = useState([]);
   const [templates, setTemplates] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -177,6 +178,7 @@ export default function LXCHubView({ onOpenConsole, onOpenSnapshots }) {
               <thead className="bg-slate-50 text-slate-600 uppercase text-[10px] font-black tracking-wider border-b border-slate-200">
                 <tr>
                   <th className="px-6 py-3.5">ID / Hostname</th>
+                  <th className="px-6 py-3.5">Node</th>
                   <th className="px-6 py-3.5">Status</th>
                   <th className="px-6 py-3.5">CPU Cores</th>
                   <th className="px-6 py-3.5">Memory</th>
@@ -202,6 +204,10 @@ export default function LXCHubView({ onOpenConsole, onOpenSnapshots }) {
                             <span className="text-[10px] text-slate-400 font-mono block">ID: #{lxc.vmid}</span>
                           </div>
                         </div>
+                      </td>
+
+                      <td className="px-6 py-4 font-mono font-bold text-slate-600">
+                        {lxc.node || 'pve'}
                       </td>
 
                       <td className="px-6 py-4">
@@ -243,6 +249,16 @@ export default function LXCHubView({ onOpenConsole, onOpenSnapshots }) {
                               className="p-1.5 text-slate-500 hover:text-emerald-600 hover:bg-emerald-50 rounded-lg transition"
                             >
                               <Play className="w-4 h-4" />
+                            </button>
+                          )}
+
+                          {onOpenMigrate && (
+                            <button
+                              onClick={() => onOpenMigrate(lxc, true)}
+                              title="Live Cross-Node Migration"
+                              className="p-1.5 text-slate-500 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition"
+                            >
+                              <ArrowRightLeft className="w-4 h-4" />
                             </button>
                           )}
 

@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import Sidebar from './components/Sidebar';
 import Header from './components/Header';
 import OverviewView from './components/OverviewView';
+import ClusterNodesView from './components/ClusterNodesView';
 import VMListView from './components/VMListView';
 import LXCHubView from './components/LXCHubView';
 import MarketplaceView from './components/MarketplaceView';
@@ -10,11 +11,13 @@ import StorageView from './components/StorageView';
 import GitOpsView from './components/GitOpsView';
 import VNCConsoleModal from './components/VNCConsoleModal';
 import SnapshotModal from './components/SnapshotModal';
+import MigrateModal from './components/MigrateModal';
 import LoginView from './components/LoginView';
 import { getCurrentUser, setAuthToken, setCurrentUser } from './api';
 
 const TAB_TITLES = {
   overview: 'Datacenter Overview & Metrics',
+  cluster: 'Physical Cluster Nodes & Scale-Out',
   vms: 'KVM Virtual Machines',
   lxc: 'LXC Micro-Containers',
   marketplace: '1-Click App Marketplace',
@@ -29,6 +32,7 @@ export default function App() {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [consoleModal, setConsoleModal] = useState({ isOpen: false, vmid: null, vmName: '' });
   const [snapshotModal, setSnapshotModal] = useState({ isOpen: false, vmid: null, name: '', isLXC: false });
+  const [migrateModal, setMigrateModal] = useState({ isOpen: false, item: null, isLXC: false });
 
   useEffect(() => {
     const handleAuthExpired = () => {
@@ -65,6 +69,14 @@ export default function App() {
     setSnapshotModal({ isOpen: false, vmid: null, name: '', isLXC: false });
   };
 
+  const handleOpenMigrate = (item, isLXC = false) => {
+    setMigrateModal({ isOpen: true, item, isLXC });
+  };
+
+  const handleCloseMigrate = () => {
+    setMigrateModal({ isOpen: false, item: null, isLXC: false });
+  };
+
   if (!user) {
     return <LoginView onLoginSuccess={handleLoginSuccess} />;
   }
@@ -94,10 +106,14 @@ export default function App() {
             {activeTab === 'overview' && (
               <OverviewView onNavigate={setActiveTab} user={user} />
             )}
+            {activeTab === 'cluster' && (
+              <ClusterNodesView />
+            )}
             {activeTab === 'vms' && (
               <VMListView 
                 onOpenConsole={handleOpenConsole} 
                 onOpenSnapshots={handleOpenSnapshots}
+                onOpenMigrate={handleOpenMigrate}
                 user={user} 
               />
             )}
@@ -105,6 +121,7 @@ export default function App() {
               <LXCHubView 
                 onOpenConsole={handleOpenConsole}
                 onOpenSnapshots={handleOpenSnapshots}
+                onOpenMigrate={handleOpenMigrate}
               />
             )}
             {activeTab === 'marketplace' && (
@@ -122,10 +139,10 @@ export default function App() {
             <div className="flex items-center space-x-2">
               <span className="font-black text-slate-900">TOTO CLOUD OS</span>
               <span>•</span>
-              <span className="font-semibold text-slate-700">Enterprise Private Datacenter v2.0</span>
+              <span className="font-semibold text-slate-700">Enterprise Multi-Node Datacenter v2.5</span>
             </div>
             <div className="text-slate-600 font-semibold">
-              Proxmox VE 8.4 • Second SSD (240GB) • KVM & LXC Containerization
+              Proxmox VE 8.4 • Corosync VoteQuorum • KVM & LXC Containerization
             </div>
           </div>
         </footer>
@@ -147,6 +164,16 @@ export default function App() {
           name={snapshotModal.name}
           isLXC={snapshotModal.isLXC}
           onClose={handleCloseSnapshots}
+        />
+      )}
+
+      {/* Live Cross-Node Migration Modal */}
+      {migrateModal.isOpen && migrateModal.item && (
+        <MigrateModal
+          item={migrateModal.item}
+          isLXC={migrateModal.isLXC}
+          onClose={handleCloseMigrate}
+          onSuccess={() => {}}
         />
       )}
     </div>
