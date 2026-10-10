@@ -16,6 +16,10 @@ import AICloudOpsView from './components/AICloudOpsView';
 import WebTerminalView from './components/WebTerminalView';
 import ClusterHAView from './components/ClusterHAView';
 import VPCNetworkView from './components/VPCNetworkView';
+import DockerOrchestratorView from './components/DockerOrchestratorView';
+import SSLProxyManagerView from './components/SSLProxyManagerView';
+import FileManagerView from './components/FileManagerView';
+import LiveMetricsView from './components/LiveMetricsView';
 import CommandPaletteModal from './components/CommandPaletteModal';
 import NotificationsSettingsModal from './components/NotificationsSettingsModal';
 import VNCConsoleModal from './components/VNCConsoleModal';
@@ -29,12 +33,16 @@ const TAB_TITLES = {
   cluster: 'Physical Cluster Nodes & Scale-Out',
   vms: 'KVM Virtual Machines',
   lxc: 'LXC Micro-Containers',
+  docker: 'Docker Engine & Compose Stacks',
   marketplace: '1-Click App Marketplace & Instant VM',
+  proxy: 'Reverse Proxy & Auto-SSL Gateway',
   firewall: 'SDN & Visual Cloud Firewall Hub',
   vpc: 'VPC Subnets & Software-Defined Networking',
   ha: 'High Availability (HA) & Self-Healing Watchdog',
   storage: 'Storage & Dedicated ISO Vault',
+  files: 'Cloud File Explorer & Config Editor',
   backups: 'Auto-Backup & Disaster Recovery VZDump',
+  metrics: 'Real-Time Observability & Process Tree',
   terminal: 'Node Web Terminal & Diagnostic Shell',
   billing: 'Resource Metering & Multi-Tenant Billing',
   'ai-ops': 'AI Cloud Architect & Autonomous Ops',
@@ -151,8 +159,14 @@ export default function App() {
                 onOpenMigrate={handleOpenMigrate}
               />
             )}
+            {activeTab === 'docker' && (
+              <DockerOrchestratorView />
+            )}
             {activeTab === 'marketplace' && (
               <MarketplaceView onDeployed={() => setActiveTab('vms')} />
+            )}
+            {activeTab === 'proxy' && (
+              <SSLProxyManagerView />
             )}
             {activeTab === 'firewall' && (
               <FirewallView />
@@ -166,8 +180,14 @@ export default function App() {
             {activeTab === 'storage' && (
               <StorageView />
             )}
+            {activeTab === 'files' && (
+              <FileManagerView />
+            )}
             {activeTab === 'backups' && (
               <BackupSchedulerView />
+            )}
+            {activeTab === 'metrics' && (
+              <LiveMetricsView />
             )}
             {activeTab === 'terminal' && (
               <WebTerminalView />
@@ -196,7 +216,7 @@ export default function App() {
               <span className="font-semibold text-slate-700">Enterprise Next-Gen Cloud Platform v3.0</span>
             </div>
             <div className="text-slate-600 font-semibold">
-              Proxmox VE 8.4 • Corosync HA • SDN VPC • ZSTD VZDump • KVM / LXC
+              Proxmox VE 8.4 • Docker Moby • Let's Encrypt SSL • SDN VPC • 100GB Extra Vault
             </div>
           </div>
         </footer>

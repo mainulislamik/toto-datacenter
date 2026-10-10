@@ -22,6 +22,8 @@ import {
   Bot,
   Shield,
   Terminal,
+  Folder,
+  Globe,
   X
 } from 'lucide-react';
 
@@ -40,10 +42,12 @@ export default function Sidebar({
     { id: 'cluster', label: 'Cluster Nodes & Scale-Out', icon: Cpu, badge: 'Nodes' },
     { id: 'vms', label: 'KVM Virtual Machines', icon: Server, badge: 'KVM' },
     { id: 'lxc', label: 'LXC Micro-Containers', icon: Zap, badge: 'Sub-Sec' },
+    { id: 'docker', label: 'Docker & Compose Stacks', icon: Layers, badge: 'Moby' },
     { id: 'marketplace', label: '1-Click App Store', icon: ShoppingBag, badge: '10s' },
   ];
 
   const networkSecurityItems = [
+    { id: 'proxy', label: 'Reverse Proxy & SSL', icon: Globe, badge: 'ACME' },
     { id: 'firewall', label: 'SDN & Cloud Firewall', icon: Shield, badge: 'Guard' },
     { id: 'vpc', label: 'VPC Subnets & Bridges', icon: Layers, badge: 'SDN' },
     { id: 'ha', label: 'High Availability (HA)', icon: ShieldCheck, badge: 'Self-Heal' },
@@ -51,11 +55,13 @@ export default function Sidebar({
 
   const storageBackupItems = [
     { id: 'storage', label: 'Storage & ISO Vault', icon: HardDrive },
+    { id: 'files', label: 'Cloud File Explorer', icon: Folder, badge: '100GB' },
     { id: 'backups', label: 'Auto-Backup & VZDump', icon: Archive, badge: 'ZSTD' },
     { id: 'gitops', label: '1-Click ISO & Git-Ops', icon: GitBranch },
   ];
 
   const opsBillingItems = [
+    { id: 'metrics', label: 'Observability & Metrics', icon: Activity, badge: '5s' },
     { id: 'terminal', label: 'Node Web Terminal', icon: Terminal, badge: 'CLI' },
     { id: 'billing', label: 'Metering & Multi-Tenant', icon: DollarSign, badge: 'PAYG' },
     { id: 'ai-ops', label: 'AI Cloud Architect', icon: Bot, badge: 'AI' },

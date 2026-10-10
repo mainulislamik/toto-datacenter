@@ -768,4 +768,147 @@ class ProxmoxClient:
         except Exception:
             return False
 
+    # ----------------- DOCKER ENGINE ORCHESTRATOR -----------------
+    async def get_docker_containers(self) -> List[Dict[str, Any]]:
+        """List all Docker containers from hypervisor / host"""
+        cmd = "docker ps -a --format '{{json .}}' 2>/dev/null || true"
+        out = self._exec_cmd(cmd)
+        containers = []
+        if out:
+            for line in out.strip().split("\n"):
+                if line.strip():
+                    try:
+                        c = json.loads(line)
+                        containers.append({
+                            "id": c.get("ID", ""),
+                            "name": c.get("Names", "").replace("/", ""),
+                            "image": c.get("Image", ""),
+                            "status": c.get("Status", ""),
+                            "state": c.get("State", "running" if "Up" in c.get("Status", "") else "exited"),
+                            "ports": c.get("Ports", ""),
+                            "created": c.get("CreatedAt", "")
+                        })
+                    except Exception:
+                        pass
+        return containers
+
+    async def docker_action(self, cid: str, action: str) -> Dict[str, Any]:
+        """Perform action on docker container: start, stop, restart, pause, unpause, rm"""
+        allowed_actions = ["start", "stop", "restart", "pause", "unpause", "rm"]
+        if action not in allowed_actions:
+            return {"status": "error", "message": f"Action {action} not permitted"}
+        cmd = f"docker {action} {cid} 2>&1"
+        out = self._exec_cmd(cmd)
+        return {"status": "success", "action": action, "output": out}
+
+    async def get_docker_logs(self, cid: str, tail: int = 100) -> str:
+        """Get container logs"""
+        cmd = f"docker logs --tail {tail} {cid} 2>&1"
+        return self._exec_cmd(cmd)
+
+    async def get_docker_images(self) -> List[Dict[str, Any]]:
+        """List local Docker images"""
+        cmd = "docker images --format '{{json .}}' 2>/dev/null || true"
+        out = self._exec_cmd(cmd)
+        images = []
+        if out:
+            for line in out.strip().split("\n"):
+                if line.strip():
+                    try:
+                        img = json.loads(line)
+                        images.append({
+                            "id": img.get("ID", ""),
+                            "repository": img.get("Repository", ""),
+                            "tag": img.get("Tag", ""),
+                            "size": img.get("Size", ""),
+                            "created": img.get("CreatedAt", "")
+                        })
+                    except Exception:
+                        pass
+        return images
+
+    async def pull_docker_image(self, image_name: str) -> Dict[str, Any]:
+        """Pull a docker image"""
+        cmd = f"docker pull {image_name} 2>&1"
+        out = self._exec_cmd(cmd)
+        return {"status": "success", "image": image_name, "output": out}
+
+    # ----------------- CLOUD FILE EXPLORER -----------------
+    async def list_files(self, path: str = "/mnt/extra-vault") -> List[Dict[str, Any]]:
+        """Safely list files and directories inside storage paths"""
+        # Ensure path is sanitized and within allowed boundaries
+        safe_prefixes = ["/mnt/extra-vault", "/var/lib/vz", "/etc/pve", "/home/imon/Extra_SSD", "/tmp"]
+        is_safe = any(path.startswith(p) for p in safe_prefixes) or path == "/"
+        if not is_safe:
+            path = "/mnt/extra-vault"
+        
+        cmd = f"ls -la --time-style=+%Y-%m-%d\\ %H:%M:%S '{path}' 2>/dev/null || true"
+        out = self._exec_cmd(cmd)
+        items = []
+        if out:
+            lines = out.strip().split("\n")
+            for line in lines[1:]: # Skip 'total'
+                parts = line.split(maxsplit=8)
+                if len(parts) >= 9:
+                    perms, _, owner, group, size, date, time_str, name = parts[0], parts[1], parts[2], parts[3], parts[4], parts[5], parts[6], parts[8]
+                    if name in [".", ".."]:
+                        continue
+                    is_dir = perms.startswith("d")
+                    items.append({
+                        "name": name,
+                        "path": os.path.join(path, name),
+                        "is_dir": is_dir,
+                        "size": int(size) if size.isdigit() else 0,
+                        "size_human": f"{round(int(size)/1024/1024, 2)} MB" if size.isdigit() and int(size) > 1024*1024 else f"{round(int(size)/1024, 1)} KB" if size.isdigit() and int(size) > 1024 else f"{size} B",
+                        "permissions": perms,
+                        "owner": f"{owner}:{group}",
+                        "modified": f"{date} {time_str}"
+                    })
+        return items
+
+    async def read_file_content(self, path: str) -> Dict[str, Any]:
+        """Safely read text file content (max 500KB)"""
+        cmd = f"head -c 500000 '{path}' 2>/dev/null || true"
+        content = self._exec_cmd(cmd)
+        return {"path": path, "content": content}
+
+    async def write_file_content(self, path: str, content: str) -> Dict[str, Any]:
+        """Safely write/save file content"""
+        import tempfile
+        with tempfile.NamedTemporaryFile(mode="w", delete=False) as tmp:
+            tmp.write(content)
+            tmp_path = tmp.name
+        self._exec_cmd(f"cp '{tmp_path}' '{path}' && rm '{tmp_path}'")
+        return {"status": "success", "path": path}
+
+    # ----------------- REAL-TIME METRICS & TELEMETRY -----------------
+    async def get_realtime_metrics(self) -> Dict[str, Any]:
+        """Get live CPU, memory, load average, and top processes"""
+        uptime_out = self._exec_cmd("uptime 2>/dev/null || true")
+        mem_out = self._exec_cmd("free -m 2>/dev/null || true")
+        df_out = self._exec_cmd("df -h / /mnt/extra-vault 2>/dev/null || true")
+        ps_out = self._exec_cmd("ps aux --sort=-%cpu | head -n 11 2>/dev/null || true")
+        
+        processes = []
+        if ps_out:
+            lines = ps_out.strip().split("\n")
+            for line in lines[1:]:
+                parts = line.split(maxsplit=10)
+                if len(parts) >= 11:
+                    processes.append({
+                        "user": parts[0],
+                        "pid": parts[1],
+                        "cpu": float(parts[2]) if parts[2].replace(".", "", 1).isdigit() else 0.0,
+                        "mem": float(parts[3]) if parts[3].replace(".", "", 1).isdigit() else 0.0,
+                        "command": parts[10][:60]
+                    })
+        
+        return {
+            "uptime_raw": uptime_out,
+            "memory_raw": mem_out,
+            "storage_raw": df_out,
+            "top_processes": processes,
+            "timestamp": time.time()
+        }
+
 proxmox_client = ProxmoxClient()

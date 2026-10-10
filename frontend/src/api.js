@@ -325,6 +325,31 @@ export const api = {
 
   // Global Command Search
   searchGlobal: (q) => request(`/search/global?q=${encodeURIComponent(q)}`),
+
+  // Docker Engine Orchestrator
+  getDockerContainers: () => request('/docker/containers'),
+  dockerContainerAction: (cid, action) => request(`/docker/containers/${cid}/action`, { method: 'POST', body: { action } }),
+  getDockerLogs: (cid, tail = 100) => request(`/docker/containers/${cid}/logs?tail=${tail}`),
+  getDockerImages: () => request('/docker/images'),
+  pullDockerImage: (image) => request('/docker/images/pull', { method: 'POST', body: { image } }),
+  deployDockerCompose: (data) => request('/docker/compose/deploy', { method: 'POST', body: data }),
+
+  // Reverse Proxy & SSL Gateway
+  getProxyRoutes: () => request('/proxy/routes'),
+  createProxyRoute: (data) => request('/proxy/routes', { method: 'POST', body: data }),
+  deleteProxyRoute: (routeId) => request(`/proxy/routes/${routeId}`, { method: 'DELETE' }),
+  issueSSLCertificate: (domain) => request('/proxy/ssl/issue', { method: 'POST', body: { domain } }),
+
+  // Cloud File Manager
+  browseFiles: (path = '/mnt/extra-vault') => request(`/files/browse?path=${encodeURIComponent(path)}`),
+  readFileData: (path) => request(`/files/read?path=${encodeURIComponent(path)}`),
+  saveFileData: (path, content) => request('/files/write', { method: 'POST', body: { path, content } }),
+  createFileOrDir: (path, is_dir = false) => request('/files/create', { method: 'POST', body: { path, is_dir } }),
+  deleteFileOrDir: (path) => request(`/files/delete?path=${encodeURIComponent(path)}`, { method: 'DELETE' }),
+
+  // Real-time Metrics & Process Manager
+  getRealtimeMetrics: () => request('/metrics/realtime'),
+  killProcess: (pid) => request(`/metrics/processes/${pid}/kill`, { method: 'POST' }),
 };
 
 export default api;
