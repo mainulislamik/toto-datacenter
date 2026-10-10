@@ -1,5 +1,6 @@
 import os
 import uuid
+import time
 import asyncio
 import subprocess
 from typing import List, Optional, Dict, Any
@@ -518,6 +519,54 @@ async def delete_virtual_machine(vmid: int, node: str = "pve", admin_user: Dict[
     try:
         await proxmox_client.delete_vm(vmid, node=node)
         return {"status": "success", "message": f"VM {vmid} deleted"}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/api/vms/{vmid}/snapshots")
+async def list_vm_snapshots(vmid: int, node: str = "pve", current_user: Dict[str, Any] = Depends(get_current_user)):
+    try:
+        return await proxmox_client.get_snapshots(vmid, node=node)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/api/vms/{vmid}/snapshots")
+async def create_vm_snapshot(vmid: int, req: Dict[str, Any], node: str = "pve", current_user: Dict[str, Any] = Depends(get_current_user)):
+    try:
+        snapname = req.get("snapname", f"snap_{int(time.time())}")
+        description = req.get("description", "")
+        vmstate = req.get("vmstate", True)
+        return await proxmox_client.create_snapshot(vmid, snapname, description, vmstate, node=node)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/api/vms/{vmid}/snapshots/{snapname}/rollback")
+async def rollback_vm_snapshot(vmid: int, snapname: str, node: str = "pve", current_user: Dict[str, Any] = Depends(get_current_user)):
+    try:
+        return await proxmox_client.rollback_snapshot(vmid, snapname, node=node)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.delete("/api/vms/{vmid}/snapshots/{snapname}")
+async def delete_vm_snapshot(vmid: int, snapname: str, node: str = "pve", current_user: Dict[str, Any] = Depends(get_current_user)):
+    try:
+        return await proxmox_client.delete_snapshot(vmid, snapname, node=node)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/api/vms/{vmid}/clone")
+async def clone_virtual_machine(vmid: int, req: Dict[str, Any], node: str = "pve", current_user: Dict[str, Any] = Depends(get_current_user)):
+    try:
+        newid = int(req.get("newid", vmid + 10))
+        name = req.get("name", f"clone-{vmid}")
+        full = bool(req.get("full", True))
+        return await proxmox_client.clone_vm(vmid, newid, name, full, node=node)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/api/vms/{vmid}/template")
+async def template_virtual_machine(vmid: int, node: str = "pve", admin_user: Dict[str, Any] = Depends(require_admin)):
+    try:
+        return await proxmox_client.template_vm(vmid, node=node)
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
