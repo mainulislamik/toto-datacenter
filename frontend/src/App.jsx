@@ -179,19 +179,20 @@ export default function App() {
       />
 
       {/* Main Workspace Container */}
-      <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
+      <div className={`flex-1 flex flex-col min-w-0 transition-all duration-300 lg:pl-[280px]`}>
         {/* Global Unified Header */}
         <Header 
           activeTabTitle={TAB_TITLES[activeTab] || 'Datacenter Management'}
           user={user}
           onOpenSearch={() => setSearchModalOpen(true)}
           onOpenNotifications={() => setNotificationsModalOpen(true)}
-          onToggleSidebar={() => setSidebarOpen(prev => !prev)}
+          onOpenSidebar={() => setSidebarOpen(prev => !prev)}
         />
 
-        {/* Scrollable Work Area */}
-        <main className="flex-1 overflow-y-auto p-4 sm:p-6 lg:p-8 bg-slate-50/50">
-          <div className="max-w-[1600px] mx-auto space-y-6">
+        {/* Scrollable Work Area with Glass Backdrop */}
+        <main className="flex-1 overflow-y-auto p-4 sm:p-6 lg:p-8 bg-gradient-to-br from-slate-50 to-slate-100/50 relative">
+          <div className="absolute inset-0 z-0 opacity-[0.03]" style={{ backgroundImage: 'linear-gradient(to right, #000 1px, transparent 1px), linear-gradient(to bottom, #000 1px, transparent 1px)', backgroundSize: '40px 40px' }} />
+          <div className="max-w-[1600px] mx-auto space-y-6 relative z-10">
             {activeTab === 'overview' && (
               <OverviewView 
                 setActiveTab={setActiveTab}
