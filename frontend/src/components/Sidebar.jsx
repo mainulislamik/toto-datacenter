@@ -49,6 +49,7 @@ export default function Sidebar({
 
   const computeItems = [
     { id: 'overview', label: 'Datacenter Overview', icon: Activity, badge: 'Live' },
+    { id: 'architecture', label: 'Datacenter Architecture', icon: Layers, badge: 'Tier-III' },
     { id: 'topology', label: 'Multi-Region Mesh Topology', icon: Network, badge: 'WireGuard' },
     { id: 'cluster', label: 'Cluster Nodes & Scale-Out', icon: Cpu, badge: 'Nodes' },
     { id: 'vms', label: 'KVM Virtual Machines', icon: Server, badge: 'KVM' },
@@ -60,6 +61,7 @@ export default function Sidebar({
   ];
 
   const networkSecurityItems = [
+    { id: 'vps-domains', label: 'VPS Custom Domains & vHost', icon: Globe, badge: 'vHost' },
     { id: 'waf', label: 'DDoS & WAF Security Shield', icon: ShieldAlert, badge: 'Shield' },
     { id: 'lb', label: 'L4/L7 Load Balancers', icon: GitFork, badge: 'Ingress' },
     { id: 'dns', label: 'Anycast DNS & Zones', icon: Globe, badge: 'Cloudflare' },

@@ -35,6 +35,8 @@ import LoadBalancerHubView from './components/LoadBalancerHubView';
 import CloudCronSchedulerView from './components/CloudCronSchedulerView';
 import EdgeCDNManagerView from './components/EdgeCDNManagerView';
 import DatacenterTopologyView from './components/DatacenterTopologyView';
+import DomainSystemHubView from './components/DomainSystemHubView';
+import DatacenterArchitectureView from './components/DatacenterArchitectureView';
 import CommandPaletteModal from './components/CommandPaletteModal';
 import NotificationsSettingsModal from './components/NotificationsSettingsModal';
 import VNCConsoleModal from './components/VNCConsoleModal';
@@ -45,6 +47,7 @@ import { getCurrentUser, setAuthToken, setCurrentUser } from './api';
 
 const TAB_TITLES = {
   overview: 'Datacenter Overview & Metrics',
+  architecture: 'Datacenter Architecture & How It Works (6-Layer Blueprint)',
   topology: 'Multi-Region Mesh Topology & WireGuard Interconnect',
   cluster: 'Physical Cluster Nodes & Scale-Out',
   vms: 'KVM Virtual Machines',
@@ -53,6 +56,7 @@ const TAB_TITLES = {
   k8s: 'Kubernetes K3s Micro-Cluster',
   gpu: 'PCIe GPU Passthrough & AI Accelerators',
   marketplace: '1-Click App Marketplace & Instant VM',
+  'vps-domains': 'VPS Custom Domain & vHost Engine',
   waf: 'DDoS & WAF Security Shield',
   lb: 'Layer 4 / Layer 7 Load Balancers',
   dns: 'Anycast DNS & Global Zones Hub',
@@ -174,6 +178,9 @@ export default function App() {
                 onOpenConsole={handleOpenConsole}
               />
             )}
+            {activeTab === 'architecture' && (
+              <DatacenterArchitectureView />
+            )}
             {activeTab === 'topology' && (
               <DatacenterTopologyView />
             )}
@@ -205,6 +212,9 @@ export default function App() {
             )}
             {activeTab === 'marketplace' && (
               <MarketplaceView setActiveTab={setActiveTab} />
+            )}
+            {activeTab === 'vps-domains' && (
+              <DomainSystemHubView />
             )}
             {activeTab === 'waf' && (
               <WAFSecurityShieldView />
@@ -293,7 +303,7 @@ export default function App() {
               <span className="font-semibold text-slate-700">Enterprise Next-Gen Cloud Platform v3.0</span>
             </div>
             <div className="text-slate-600 font-semibold">
-              Proxmox VE 8.4 • K3s • WAF • L4/L7 Load Balancers • S3 Storage • Edge CDN • Arc A770 GPU Passthrough
+              Tier-III Blueprint • VPS Custom Domains • BGP Peering • IPMI OOBM • Let's Encrypt SSL • Proxmox VE 8.4
             </div>
           </div>
         </footer>

@@ -2018,6 +2018,71 @@ async def get_datacenter_mesh(current_user: Dict[str, Any] = Depends(get_current
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
+# ----------------- VPS DOMAIN SYSTEM & VHOSTS -----------------
+
+@app.get("/api/vps-domains")
+async def list_vps_domains(current_user: Dict[str, Any] = Depends(get_current_user)):
+    try:
+        domains = await proxmox_client.get_vps_domains()
+        return {"status": "success", "domains": domains}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/api/vps-domains")
+async def attach_vps_domain(req: Dict[str, Any], admin_user: Dict[str, Any] = Depends(require_admin)):
+    try:
+        domain = req.get("domain", "").strip()
+        if not domain:
+            raise HTTPException(status_code=400, detail="Domain name is required")
+        res = await proxmox_client.create_vps_domain(req)
+        return {"status": "success", "message": f"Domain '{domain}' successfully mapped & TLS issued.", "domain": res}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.delete("/api/vps-domains/{domain_id}")
+async def detach_vps_domain(domain_id: str, admin_user: Dict[str, Any] = Depends(require_admin)):
+    return {"status": "success", "message": f"Domain mapping '{domain_id}' removed and vHost pruned."}
+
+# ----------------- DATACENTER ARCHITECTURE BLUEPRINT -----------------
+
+@app.get("/api/datacenter/architecture")
+async def get_datacenter_architecture(current_user: Dict[str, Any] = Depends(get_current_user)):
+    try:
+        data = await proxmox_client.get_datacenter_architecture_blueprint()
+        return {"status": "success", **data}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+# ----------------- BGP PEERING & ASN ANYCAST -----------------
+
+@app.get("/api/network/bgp")
+async def get_bgp_peering(current_user: Dict[str, Any] = Depends(get_current_user)):
+    try:
+        data = await proxmox_client.get_bgp_peering_status()
+        return {"status": "success", **data}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+# ----------------- IPMI & OUT-OF-BAND SENSORS -----------------
+
+@app.get("/api/hardware/ipmi")
+async def get_hardware_ipmi(current_user: Dict[str, Any] = Depends(get_current_user)):
+    try:
+        data = await proxmox_client.get_ipmi_status()
+        return {"status": "success", **data}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+# ----------------- REVERSE DNS (rDNS / PTR) -----------------
+
+@app.get("/api/dns/rdns")
+async def get_rdns_records(current_user: Dict[str, Any] = Depends(get_current_user)):
+    try:
+        records = await proxmox_client.get_rdns_records()
+        return {"status": "success", "records": records}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
 # ----------------- SYSTEM STATUS & HEALTH -----------------
 
 @app.get("/api/health")

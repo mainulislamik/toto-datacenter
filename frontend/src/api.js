@@ -414,6 +414,23 @@ export const api = {
 
   // Multi-Region Datacenter Mesh
   getDatacenterMesh: () => request('/datacenter/mesh'),
+
+  // VPS Custom Domain System & VHost Engine
+  getVPSDomains: () => request('/vps-domains'),
+  attachVPSDomain: (data) => request('/vps-domains', { method: 'POST', body: data }),
+  detachVPSDomain: (domainId) => request(`/vps-domains/${domainId}`, { method: 'DELETE' }),
+
+  // Datacenter Architecture & How Datacenters Work
+  getDatacenterArchitecture: () => request('/datacenter/architecture'),
+
+  // BGP Peering & ASN Anycast
+  getBGPPeering: () => request('/network/bgp'),
+
+  // IPMI & Hardware Sensors
+  getIPMIStatus: () => request('/hardware/ipmi'),
+
+  // Reverse DNS (rDNS / PTR)
+  getRDNSRecords: () => request('/dns/rdns'),
 };
 
 export default api;
