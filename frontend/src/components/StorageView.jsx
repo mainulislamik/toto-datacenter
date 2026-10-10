@@ -42,10 +42,30 @@ export default function StorageView({ onSelectISOForVM }) {
 
   // Search & Filter
   const [searchFilter, setSearchFilter] = useState('');
+  const [deletingVolid, setDeletingVolid] = useState(null);
 
   useEffect(() => {
     loadData();
   }, []);
+
+  const handleDeleteISO = async (volid, name) => {
+    const displayName = name || volid;
+    if (!window.confirm(`Are you sure you want to permanently remove "${displayName}" from the storage vault?`)) {
+      return;
+    }
+    setDeletingVolid(volid);
+    setError(null);
+    setSuccessMsg('');
+    try {
+      await api.deleteISO(volid);
+      setSuccessMsg(`Successfully deleted ${displayName} from ISO vault.`);
+      await loadData();
+    } catch (err) {
+      setError(`Failed to delete ISO: ${err.message}`);
+    } finally {
+      setDeletingVolid(null);
+    }
+  };
 
   const loadData = async () => {
     setLoading(true);
@@ -562,13 +582,29 @@ export default function StorageView({ onSelectISOForVM }) {
                         {sizeMB} MB
                       </td>
                       <td className="px-6 py-4 text-right">
-                        <button
-                          onClick={() => onSelectISOForVM && onSelectISOForVM(iso.volid, analysis)}
-                          className="px-3.5 py-1.5 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 rounded-lg text-xs font-semibold transition inline-flex items-center gap-1.5"
-                        >
-                          <Sparkles className="w-3.5 h-3.5" />
-                          Launch VM
-                        </button>
+                        <div className="flex items-center justify-end gap-2">
+                          <button
+                            onClick={() => onSelectISOForVM && onSelectISOForVM(iso.volid, analysis)}
+                            className="px-3.5 py-1.5 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 rounded-lg text-xs font-semibold transition inline-flex items-center gap-1.5"
+                            title="Launch new VM with this ISO"
+                          >
+                            <Sparkles className="w-3.5 h-3.5" />
+                            Launch VM
+                          </button>
+                          <button
+                            onClick={() => handleDeleteISO(iso.volid, iso.filename || analysis.distro)}
+                            disabled={deletingVolid === iso.volid}
+                            className="px-3 py-1.5 bg-rose-50 hover:bg-rose-100 text-rose-700 rounded-lg text-xs font-semibold transition inline-flex items-center gap-1.5 border border-rose-200/60"
+                            title="Remove ISO from storage"
+                          >
+                            {deletingVolid === iso.volid ? (
+                              <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                            ) : (
+                              <Trash2 className="w-3.5 h-3.5" />
+                            )}
+                            Remove
+                          </button>
+                        </div>
                       </td>
                     </tr>
                   );

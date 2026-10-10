@@ -192,6 +192,7 @@ export const api = {
   // Storage & ISO Vault
   getStoragePools: (node = 'pve') => request(`/storage/pools?node=${node}`),
   getISOs: (node = 'pve', storage = 'local') => request(`/storage/isos?node=${node}&storage=${storage}`),
+  deleteISO: (volid) => request(`/storage/iso/${encodeURIComponent(volid)}`, { method: 'DELETE' }),
   analyzeISOName: (filename) =>
     request('/storage/analyze-name', {
       method: 'POST',
