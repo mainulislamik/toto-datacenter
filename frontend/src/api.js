@@ -393,6 +393,27 @@ export const api = {
 
   // Datacenter Audit Logs & Event Ledger
   getAuditLogs: () => request('/audit/logs'),
+
+  // WAF & DDoS Security Shield
+  getWAFShield: () => request('/waf/shield'),
+  toggleWAFAttackMode: (enabled) => request('/waf/attack-mode', { method: 'POST', body: { enabled } }),
+  addWAFBan: (ip) => request('/waf/bans', { method: 'POST', body: { ip } }),
+
+  // Layer 4 / Layer 7 Load Balancers
+  getLoadBalancers: () => request('/load-balancers'),
+  createLoadBalancer: (data) => request('/load-balancers', { method: 'POST', body: data }),
+
+  // Global Cron & Task Orchestrator
+  getCronTasks: () => request('/cron/tasks'),
+  createCronTask: (data) => request('/cron/tasks', { method: 'POST', body: data }),
+  runCronTaskNow: (taskId) => request(`/cron/tasks/${taskId}/run`, { method: 'POST' }),
+
+  // Multi-Cloud Edge CDN & Cache
+  getEdgeCDNStatus: () => request('/cdn/status'),
+  purgeEdgeCDNCache: (type = 'everything') => request('/cdn/purge', { method: 'POST', body: { type } }),
+
+  // Multi-Region Datacenter Mesh
+  getDatacenterMesh: () => request('/datacenter/mesh'),
 };
 
 export default api;

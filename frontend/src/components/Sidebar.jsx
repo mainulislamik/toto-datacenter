@@ -31,6 +31,9 @@ import {
   Code,
   RotateCcw,
   FileText,
+  GitFork,
+  Clock,
+  Network,
   X
 } from 'lucide-react';
 
@@ -46,6 +49,7 @@ export default function Sidebar({
 
   const computeItems = [
     { id: 'overview', label: 'Datacenter Overview', icon: Activity, badge: 'Live' },
+    { id: 'topology', label: 'Multi-Region Mesh Topology', icon: Network, badge: 'WireGuard' },
     { id: 'cluster', label: 'Cluster Nodes & Scale-Out', icon: Cpu, badge: 'Nodes' },
     { id: 'vms', label: 'KVM Virtual Machines', icon: Server, badge: 'KVM' },
     { id: 'lxc', label: 'LXC Micro-Containers', icon: Zap, badge: 'Sub-Sec' },
@@ -56,6 +60,8 @@ export default function Sidebar({
   ];
 
   const networkSecurityItems = [
+    { id: 'waf', label: 'DDoS & WAF Security Shield', icon: ShieldAlert, badge: 'Shield' },
+    { id: 'lb', label: 'L4/L7 Load Balancers', icon: GitFork, badge: 'Ingress' },
     { id: 'dns', label: 'Anycast DNS & Zones', icon: Globe, badge: 'Cloudflare' },
     { id: 'proxy', label: 'Reverse Proxy & SSL', icon: Globe, badge: 'ACME' },
     { id: 'firewall', label: 'SDN & Cloud Firewall', icon: Shield, badge: 'Guard' },
@@ -66,6 +72,7 @@ export default function Sidebar({
   ];
 
   const storageBackupItems = [
+    { id: 'cdn', label: 'Edge CDN & Asset Cache', icon: Zap, badge: 'Brotli' },
     { id: 'storage', label: 'Storage & ISO Vault', icon: HardDrive },
     { id: 'buckets', label: 'S3 Object Storage Buckets', icon: Database, badge: 'S3' },
     { id: 'files', label: 'Cloud File Explorer', icon: Folder, badge: '100GB' },
@@ -76,6 +83,7 @@ export default function Sidebar({
 
   const opsBillingItems = [
     { id: 'iac', label: 'Terraform & Cloud-Init IaC', icon: Code, badge: 'IaC' },
+    { id: 'cron', label: 'Global Cron Orchestrator', icon: Clock, badge: 'Auto' },
     { id: 'autoscaler', label: 'Dynamic Auto-Scaler', icon: TrendingUp, badge: 'Elastic' },
     { id: 'metrics', label: 'Observability & Metrics', icon: Activity, badge: '5s' },
     { id: 'terminal', label: 'Node Web Terminal', icon: Terminal, badge: 'CLI' },

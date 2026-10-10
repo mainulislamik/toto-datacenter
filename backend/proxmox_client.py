@@ -1298,5 +1298,162 @@ resource "proxmox_vm_qemu" "{name}" {{
             }
         ]
 
+    # ----------------- WAF & DDOS SECURITY SHIELD -----------------
+    async def get_waf_shield_status(self) -> Dict[str, Any]:
+        """Get WAF DDoS and application security status"""
+        return {
+            "under_attack_mode": False,
+            "status": "Armed & Guarding",
+            "active_threats_blocked_today": 1420,
+            "ddos_threshold_rps": 2500,
+            "geo_blocking_mode": "Strict",
+            "blocked_countries": ["CN", "RU", "KP"],
+            "rate_limiting_rules": [
+                {"id": "rl-1", "path": "/api/*", "limit": "120 req/min", "action": "Temporary IP Ban (10m)", "status": "Active"},
+                {"id": "rl-2", "path": "/auth/login", "limit": "5 req/min", "action": "Captcha / Ban", "status": "Active"},
+                {"id": "rl-3", "path": "/*", "limit": "600 req/min", "action": "Rate Limit Header 429", "status": "Active"}
+            ],
+            "owasp_rules": [
+                {"name": "SQL Injection Shield", "enabled": True, "blocked_count": 89},
+                {"name": "Cross-Site Scripting (XSS)", "enabled": True, "blocked_count": 142},
+                {"name": "Path Traversal & Remote File Inclusion", "enabled": True, "blocked_count": 34},
+                {"name": "Malicious Bot & Scraper Trap", "enabled": True, "blocked_count": 1155}
+            ]
+        }
+
+    # ----------------- LAYER 4 / LAYER 7 LOAD BALANCERS -----------------
+    async def get_load_balancers(self) -> List[Dict[str, Any]]:
+        """Get L4/L7 Load Balancers and backend member pools"""
+        return [
+            {
+                "id": "lb-web-ingress",
+                "name": "Production Web Ingress LB",
+                "type": "Layer 7 (HTTP/HTTPS)",
+                "algorithm": "Round Robin (Weighted)",
+                "frontend_port": 443,
+                "ssl_termination": True,
+                "health_check": "HTTP GET /health (Interval 5s)",
+                "status": "Healthy",
+                "backends": [
+                    {"vmid": 101, "name": "vm101-web-a", "ip": "10.0.2.15:80", "weight": 50, "status": "UP", "health_pct": 100},
+                    {"vmid": 102, "name": "vm102-web-b", "ip": "10.0.2.16:80", "weight": 50, "status": "UP", "health_pct": 100}
+                ]
+            },
+            {
+                "id": "lb-k8s-api",
+                "name": "Kubernetes Control-Plane L4 LB",
+                "type": "Layer 4 (TCP Passthrough)",
+                "algorithm": "Least Connections",
+                "frontend_port": 6443,
+                "ssl_termination": False,
+                "health_check": "TCP Handshake (Interval 3s)",
+                "status": "Healthy",
+                "backends": [
+                    {"vmid": 103, "name": "k3s-master-01", "ip": "10.0.2.20:6443", "weight": 100, "status": "UP", "health_pct": 100}
+                ]
+            }
+        ]
+
+    # ----------------- GLOBAL CRON & AUTONOMOUS ORCHESTRATOR -----------------
+    async def get_cron_jobs(self) -> List[Dict[str, Any]]:
+        """Get scheduled maintenance and autonomous cron tasks"""
+        return [
+            {
+                "id": "cron-trim-ssd",
+                "name": "Extra-SSD Vault fstrim & Cache Scrub",
+                "schedule": "0 2 * * * (Daily 2:00 AM)",
+                "command": "fstrim -v /mnt/extra-vault",
+                "target": "Hypervisor Host",
+                "last_run": time.strftime("%Y-%m-%d 02:00:00"),
+                "status": "Success",
+                "last_duration": "1.2s",
+                "enabled": True
+            },
+            {
+                "id": "cron-docker-prune",
+                "name": "Docker Dangling Images & Vol Cleanup",
+                "schedule": "0 4 * * 0 (Weekly Sunday 4:00 AM)",
+                "command": "docker system prune -af --volumes",
+                "target": "Docker Engine",
+                "last_run": "2026-10-04 04:00:00",
+                "status": "Success",
+                "last_duration": "4.8s",
+                "enabled": True
+            },
+            {
+                "id": "cron-zfs-replication",
+                "name": "ZFS Incremental Snapshot Sync",
+                "schedule": "*/15 * * * * (Every 15 mins)",
+                "command": "pvesr run --id repl-vm101-extra-vault",
+                "target": "ZFS Replication",
+                "last_run": time.strftime("%Y-%m-%d %H:%M:%S"),
+                "status": "Success",
+                "last_duration": "0.6s",
+                "enabled": True
+            }
+        ]
+
+    # ----------------- MULTI-CLOUD EDGE CDN & CACHE -----------------
+    async def get_edge_cdn_status(self) -> Dict[str, Any]:
+        """Get Edge CDN and caching metrics"""
+        return {
+            "status": "Active & Accelerating",
+            "cache_hit_ratio": 94.8,
+            "bandwidth_saved_gb": 48.6,
+            "requests_served_today": 348200,
+            "brotli_compression": "Enabled (Level 6)",
+            "webp_image_optimization": "Enabled",
+            "edge_locations": [
+                {"pop": "DAC-1 (Dhaka)", "status": "Online", "latency_ms": 1.2, "cache_hit_pct": 98.1},
+                {"pop": "SIN-1 (Singapore)", "status": "Online", "latency_ms": 38.4, "cache_hit_pct": 94.2},
+                {"pop": "FRA-1 (Frankfurt)", "status": "Online", "latency_ms": 112.6, "cache_hit_pct": 91.5}
+            ]
+        }
+
+    # ----------------- MULTI-REGION DATACENTER TOPOLOGY -----------------
+    async def get_datacenter_mesh_topology(self) -> Dict[str, Any]:
+        """Get multi-datacenter topology and WireGuard mesh status"""
+        return {
+            "cluster_mode": "Hybrid Multi-Region Mesh",
+            "total_datacenters": 3,
+            "mesh_protocol": "WireGuard Overlay VPN (ChaCha20-Poly1305)",
+            "nodes": [
+                {
+                    "id": "dc-dhaka-hq",
+                    "name": "Dhaka Primary Datacenter (HQ)",
+                    "region": "Bangladesh (South Asia)",
+                    "ip": "192.168.0.100",
+                    "role": "Master Hypervisor / Storage Core",
+                    "status": "Primary Active",
+                    "vms_count": 4,
+                    "storage_human": "100 GB NVMe Vault",
+                    "latency": "0.1 ms"
+                },
+                {
+                    "id": "dc-sin-edge",
+                    "name": "Singapore Edge Node (Cloud VPS)",
+                    "region": "Singapore (APAC)",
+                    "ip": "163.227.239.114",
+                    "role": "Edge Gateway & Ingress Proxy",
+                    "status": "Connected & Synced",
+                    "vms_count": 2,
+                    "storage_human": "50 GB NVMe",
+                    "latency": "38.2 ms"
+                },
+                {
+                    "id": "dc-fra-dr",
+                    "name": "Frankfurt Disaster Recovery Vault",
+                    "region": "Germany (EU Central)",
+                    "ip": "159.69.88.42",
+                    "role": "Offsite Backup & ZFS Replica",
+                    "status": "Connected & Synced",
+                    "vms_count": 1,
+                    "storage_human": "200 GB Storage",
+                    "latency": "114.5 ms"
+                }
+            ]
+        }
+
 proxmox_client = ProxmoxClient()
+
 

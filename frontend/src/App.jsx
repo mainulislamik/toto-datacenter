@@ -30,6 +30,11 @@ import CloudInitIaCHubView from './components/CloudInitIaCHubView';
 import DisasterRecoveryView from './components/DisasterRecoveryView';
 import GPUPassthroughView from './components/GPUPassthroughView';
 import AuditLogsView from './components/AuditLogsView';
+import WAFSecurityShieldView from './components/WAFSecurityShieldView';
+import LoadBalancerHubView from './components/LoadBalancerHubView';
+import CloudCronSchedulerView from './components/CloudCronSchedulerView';
+import EdgeCDNManagerView from './components/EdgeCDNManagerView';
+import DatacenterTopologyView from './components/DatacenterTopologyView';
 import CommandPaletteModal from './components/CommandPaletteModal';
 import NotificationsSettingsModal from './components/NotificationsSettingsModal';
 import VNCConsoleModal from './components/VNCConsoleModal';
@@ -40,6 +45,7 @@ import { getCurrentUser, setAuthToken, setCurrentUser } from './api';
 
 const TAB_TITLES = {
   overview: 'Datacenter Overview & Metrics',
+  topology: 'Multi-Region Mesh Topology & WireGuard Interconnect',
   cluster: 'Physical Cluster Nodes & Scale-Out',
   vms: 'KVM Virtual Machines',
   lxc: 'LXC Micro-Containers',
@@ -47,6 +53,8 @@ const TAB_TITLES = {
   k8s: 'Kubernetes K3s Micro-Cluster',
   gpu: 'PCIe GPU Passthrough & AI Accelerators',
   marketplace: '1-Click App Marketplace & Instant VM',
+  waf: 'DDoS & WAF Security Shield',
+  lb: 'Layer 4 / Layer 7 Load Balancers',
   dns: 'Anycast DNS & Global Zones Hub',
   proxy: 'Reverse Proxy & Auto-SSL Gateway',
   firewall: 'SDN & Visual Cloud Firewall Hub',
@@ -54,12 +62,14 @@ const TAB_TITLES = {
   ha: 'High Availability (HA) & Self-Healing Watchdog',
   'security-audit': 'Security & CVE Vulnerability Scanner',
   'ssh-keys': 'SSH Keyring Vault & Key Injection',
+  cdn: 'Multi-Cloud Edge CDN & Asset Cache Engine',
   storage: 'Storage & Dedicated ISO Vault',
   buckets: 'S3 Object Storage Buckets',
   files: 'Cloud File Explorer & Config Editor',
   backups: 'Auto-Backup & Disaster Recovery VZDump',
   dr: 'Disaster Recovery & ZFS Replication Sync',
   iac: 'Infrastructure as Code (IaC) & Cloud-Init',
+  cron: 'Global Cron & Autonomous Task Orchestrator',
   autoscaler: 'Dynamic Auto-Scaler & Policy Engine',
   metrics: 'Real-Time Observability & Process Tree',
   terminal: 'Node Web Terminal & Diagnostic Shell',
@@ -73,32 +83,30 @@ const TAB_TITLES = {
 export default function App() {
   const [user, setUser] = useState(getCurrentUser());
   const [activeTab, setActiveTab] = useState('overview');
+  const [searchModalOpen, setSearchModalOpen] = useState(false);
+  const [notificationsModalOpen, setNotificationsModalOpen] = useState(false);
   const [sidebarOpen, setSidebarOpen] = useState(false);
+
+  // Modal states for VMs/LXC actions
   const [consoleModal, setConsoleModal] = useState({ isOpen: false, vmid: null, vmName: '' });
   const [snapshotModal, setSnapshotModal] = useState({ isOpen: false, vmid: null, name: '', isLXC: false });
   const [migrateModal, setMigrateModal] = useState({ isOpen: false, item: null, isLXC: false });
-  const [searchModalOpen, setSearchModalOpen] = useState(false);
-  const [notificationsModalOpen, setNotificationsModalOpen] = useState(false);
 
-  useEffect(() => {
-    const handleAuthExpired = () => {
-      setUser(null);
-    };
-    window.addEventListener('toto:auth-expired', handleAuthExpired);
-    return () => window.removeEventListener('toto:auth-expired', handleAuthExpired);
-  }, []);
-
-  // Keyboard shortcut listener: Cmd+K / Ctrl+K for Spotlight Search
+  // Global keyboard shortcut: Cmd+K / Ctrl+K for Spotlight search
   useEffect(() => {
     const handleKeyDown = (e) => {
-      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k') {
+      if ((e.metaKey || e.ctrlKey) && e.key === 'k') {
         e.preventDefault();
-        setSearchModalOpen((prev) => !prev);
+        setSearchModalOpen(prev => !prev);
       }
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, []);
+
+  const handleLoginSuccess = (userData) => {
+    setUser(userData);
+  };
 
   const handleLogout = () => {
     setAuthToken(null);
@@ -131,55 +139,58 @@ export default function App() {
   };
 
   if (!user) {
-    return <LoginView onLoginSuccess={(userData) => setUser(userData)} />;
+    return <LoginView onLoginSuccess={handleLoginSuccess} />;
   }
 
   return (
-    <div className="flex h-screen bg-slate-100 text-slate-900 font-sans antialiased overflow-hidden">
+    <div className="flex h-screen bg-slate-50 text-slate-900 font-sans antialiased overflow-hidden">
       {/* Dynamic Modern Sidebar */}
-      <Sidebar
-        activeTab={activeTab}
-        setActiveTab={setActiveTab}
-        user={user}
+      <Sidebar 
+        activeTab={activeTab} 
+        setActiveTab={setActiveTab} 
+        user={user} 
         onLogout={handleLogout}
         isOpen={sidebarOpen}
         onClose={() => setSidebarOpen(false)}
       />
 
-      {/* Main Workspace Area */}
+      {/* Main Workspace Container */}
       <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
-        <Header
+        {/* Global Unified Header */}
+        <Header 
+          activeTabTitle={TAB_TITLES[activeTab] || 'Datacenter Management'}
           user={user}
-          onLogout={handleLogout}
-          onToggleSidebar={() => setSidebarOpen(!sidebarOpen)}
-          title={TAB_TITLES[activeTab] || 'Datacenter Console'}
           onOpenSearch={() => setSearchModalOpen(true)}
           onOpenNotifications={() => setNotificationsModalOpen(true)}
+          onToggleSidebar={() => setSidebarOpen(prev => !prev)}
         />
 
-        {/* Dynamic Viewport Content */}
-        <main className="flex-1 overflow-y-auto p-4 sm:p-6 lg:p-8 bg-slate-50">
-          <div className="max-w-[1600px] mx-auto pb-12">
+        {/* Scrollable Work Area */}
+        <main className="flex-1 overflow-y-auto p-4 sm:p-6 lg:p-8 bg-slate-50/50">
+          <div className="max-w-[1600px] mx-auto space-y-6">
             {activeTab === 'overview' && (
-              <OverviewView
-                onNavigate={(tab) => setActiveTab(tab)}
+              <OverviewView 
+                setActiveTab={setActiveTab}
                 onOpenConsole={handleOpenConsole}
               />
+            )}
+            {activeTab === 'topology' && (
+              <DatacenterTopologyView />
             )}
             {activeTab === 'cluster' && (
               <ClusterNodesView />
             )}
             {activeTab === 'vms' && (
-              <VMListView
+              <VMListView 
                 onOpenConsole={handleOpenConsole}
-                onOpenSnapshots={(vmid, name) => handleOpenSnapshots(vmid, name, false)}
+                onOpenSnapshots={handleOpenSnapshots}
                 onOpenMigrate={(item) => handleOpenMigrate(item, false)}
               />
             )}
             {activeTab === 'lxc' && (
-              <LXCHubView
+              <LXCHubView 
                 onOpenConsole={handleOpenConsole}
-                onOpenSnapshots={(vmid, name) => handleOpenSnapshots(vmid, name, true)}
+                onOpenSnapshots={handleOpenSnapshots}
                 onOpenMigrate={(item) => handleOpenMigrate(item, true)}
               />
             )}
@@ -193,7 +204,13 @@ export default function App() {
               <GPUPassthroughView />
             )}
             {activeTab === 'marketplace' && (
-              <MarketplaceView onVMDeployed={() => setActiveTab('vms')} />
+              <MarketplaceView setActiveTab={setActiveTab} />
+            )}
+            {activeTab === 'waf' && (
+              <WAFSecurityShieldView />
+            )}
+            {activeTab === 'lb' && (
+              <LoadBalancerHubView />
             )}
             {activeTab === 'dns' && (
               <DNSZoneManagerView />
@@ -216,6 +233,9 @@ export default function App() {
             {activeTab === 'ssh-keys' && (
               <SSHKeyringVaultView />
             )}
+            {activeTab === 'cdn' && (
+              <EdgeCDNManagerView />
+            )}
             {activeTab === 'storage' && (
               <StorageView />
             )}
@@ -233,6 +253,9 @@ export default function App() {
             )}
             {activeTab === 'iac' && (
               <CloudInitIaCHubView />
+            )}
+            {activeTab === 'cron' && (
+              <CloudCronSchedulerView />
             )}
             {activeTab === 'autoscaler' && (
               <AutoScalerPolicyView />
@@ -270,7 +293,7 @@ export default function App() {
               <span className="font-semibold text-slate-700">Enterprise Next-Gen Cloud Platform v3.0</span>
             </div>
             <div className="text-slate-600 font-semibold">
-              Proxmox VE 8.4 • K3s Kubernetes • S3 Storage • Auto-Scaler • Arc A770 GPU Passthrough • Anycast DNS
+              Proxmox VE 8.4 • K3s • WAF • L4/L7 Load Balancers • S3 Storage • Edge CDN • Arc A770 GPU Passthrough
             </div>
           </div>
         </footer>
