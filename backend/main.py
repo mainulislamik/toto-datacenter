@@ -2083,6 +2083,56 @@ async def get_rdns_records(current_user: Dict[str, Any] = Depends(get_current_us
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
+# ----------------- SERVERLESS PAAS & APP PLATFORM -----------------
+
+@app.get("/api/paas/apps")
+async def list_serverless_apps(current_user: Dict[str, Any] = Depends(get_current_user)):
+    try:
+        apps = await proxmox_client.get_serverless_apps()
+        return {"status": "success", "apps": apps}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+# ----------------- ZERO-TRUST VPN & IAM BASTION -----------------
+
+@app.get("/api/security/zero-trust")
+async def get_zero_trust_sessions(current_user: Dict[str, Any] = Depends(get_current_user)):
+    try:
+        data = await proxmox_client.get_zero_trust_sessions()
+        return {"status": "success", **data}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+# ----------------- DATACENTER FINOPS & COST OPTIMIZER -----------------
+
+@app.get("/api/billing/finops")
+async def get_finops_analytics(current_user: Dict[str, Any] = Depends(get_current_user)):
+    try:
+        data = await proxmox_client.get_finops_analytics()
+        return {"status": "success", **data}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+# ----------------- ENTERPRISE IPAM & ELASTIC IP -----------------
+
+@app.get("/api/network/ipam")
+async def get_ipam_subnets(current_user: Dict[str, Any] = Depends(get_current_user)):
+    try:
+        data = await proxmox_client.get_ipam_subnets()
+        return {"status": "success", **data}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+# ----------------- AI INCIDENT RESPONDER & PAGERDUTY -----------------
+
+@app.get("/api/incidents")
+async def get_incidents(current_user: Dict[str, Any] = Depends(get_current_user)):
+    try:
+        incidents = await proxmox_client.get_incidents()
+        return {"status": "success", "incidents": incidents}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
 # ----------------- SYSTEM STATUS & HEALTH -----------------
 
 @app.get("/api/health")

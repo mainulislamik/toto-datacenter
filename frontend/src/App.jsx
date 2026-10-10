@@ -37,6 +37,11 @@ import EdgeCDNManagerView from './components/EdgeCDNManagerView';
 import DatacenterTopologyView from './components/DatacenterTopologyView';
 import DomainSystemHubView from './components/DomainSystemHubView';
 import DatacenterArchitectureView from './components/DatacenterArchitectureView';
+import ServerlessPaaSView from './components/ServerlessPaaSView';
+import ZeroTrustBastionView from './components/ZeroTrustBastionView';
+import FinOpsCostAnalyticsView from './components/FinOpsCostAnalyticsView';
+import IPAMManagerView from './components/IPAMManagerView';
+import AIIncidentResponderView from './components/AIIncidentResponderView';
 import CommandPaletteModal from './components/CommandPaletteModal';
 import NotificationsSettingsModal from './components/NotificationsSettingsModal';
 import VNCConsoleModal from './components/VNCConsoleModal';
@@ -57,6 +62,11 @@ const TAB_TITLES = {
   gpu: 'PCIe GPU Passthrough & AI Accelerators',
   marketplace: '1-Click App Marketplace & Instant VM',
   'vps-domains': 'VPS Custom Domain & vHost Engine',
+  'serverless-paas': 'Serverless Apps & PaaS Platform',
+  'zero-trust': 'Zero-Trust IAM VPN & SSH Bastion',
+  ipam: 'Enterprise IPAM & Elastic Public IPs',
+  incident: 'AI Incident Responder & PagerDuty',
+  finops: 'FinOps & Infrastructure Cost Optimizer',
   waf: 'DDoS & WAF Security Shield',
   lb: 'Layer 4 / Layer 7 Load Balancers',
   dns: 'Anycast DNS & Global Zones Hub',
@@ -290,6 +300,21 @@ export default function App() {
             )}
             {activeTab === 'gitops' && (
               <GitOpsView />
+            )}
+            {activeTab === 'serverless-paas' && (
+              <ServerlessPaaSView />
+            )}
+            {activeTab === 'zero-trust' && (
+              <ZeroTrustBastionView />
+            )}
+            {activeTab === 'finops' && (
+              <FinOpsCostAnalyticsView />
+            )}
+            {activeTab === 'ipam' && (
+              <IPAMManagerView />
+            )}
+            {activeTab === 'incident' && (
+              <AIIncidentResponderView />
             )}
           </div>
         </main>

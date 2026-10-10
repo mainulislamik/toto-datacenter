@@ -1699,6 +1699,100 @@ server {{
             {"ip": "103.185.120.10", "ptr_domain": "crm.toto.cloud", "status": "Verified", "mail_compliant": True}
         ]
 
+    # ----------------- SERVERLESS PAAS & APP PLATFORM -----------------
+    async def get_serverless_apps(self) -> List[Dict[str, Any]]:
+        return [
+            {
+                "app_id": "app-next-crm",
+                "name": "whatsapp-crm-frontend",
+                "repo": "mainulislamik/whatsapp-crm",
+                "branch": "main",
+                "runtime": "Node.js 20 (Next.js)",
+                "status": "Running (Auto-Deployed)",
+                "url": "https://crm.toto.cloud",
+                "memory_usage": "184 MB",
+                "build_status": "Success (32s)"
+            },
+            {
+                "app_id": "app-fastapi-backend",
+                "name": "crm-backend-api",
+                "repo": "mainulislamik/whatsapp-crm",
+                "branch": "main",
+                "runtime": "Python 3.12 (FastAPI)",
+                "status": "Running",
+                "url": "https://api.crm.toto.cloud",
+                "memory_usage": "96 MB",
+                "build_status": "Success (14s)"
+            },
+            {
+                "app_id": "app-rust-worker",
+                "name": "payment-webhook-processor",
+                "repo": "mainulislamik/stockwhisk-core",
+                "branch": "prod",
+                "runtime": "Rust 1.76",
+                "status": "Running",
+                "url": "https://hooks.stockwhisk.com",
+                "memory_usage": "14 MB",
+                "build_status": "Success (1m 12s)"
+            }
+        ]
+
+    # ----------------- ZERO-TRUST VPN & IAM BASTION -----------------
+    async def get_zero_trust_sessions(self) -> Dict[str, Any]:
+        return {
+            "gateway_status": "Active (Enforcing MFA)",
+            "active_sessions": [
+                {"user": "imon@totocloud.net", "ip": "103.14.22.8", "auth_method": "Google OAuth2 + YubiKey", "resource": "SSH -> Proxmox Core", "session_start": "2 hours ago", "duration": "02:14:15", "actions": "3 Commands logged"},
+                {"user": "devops@totocloud.net", "ip": "118.179.22.4", "auth_method": "GitHub SAML", "resource": "PostgreSQL DB :5432", "session_start": "45 mins ago", "duration": "00:45:10", "actions": "Read Only Query"}
+            ]
+        }
+
+    # ----------------- DATACENTER FINOPS & COST OPTIMIZER -----------------
+    async def get_finops_analytics(self) -> Dict[str, Any]:
+        return {
+            "monthly_burn_rate": "$142.50",
+            "projected_cost": "$210.00",
+            "cost_breakdown": [
+                {"service": "Compute (KVM & LXC)", "cost": "$85.00", "percent": 60},
+                {"service": "Storage (ZFS NVMe + S3)", "cost": "$32.50", "percent": 23},
+                {"service": "Network (Egress & Anycast)", "cost": "$25.00", "percent": 17}
+            ],
+            "zombie_resources": [
+                {"vmid": 108, "name": "test-staging-db", "reason": "< 1% CPU usage over 14 days", "suggested_action": "Snapshot & Archive to S3", "savings_potential": "$12.00/mo"}
+            ]
+        }
+
+    # ----------------- ENTERPRISE IPAM & ELASTIC IP -----------------
+    async def get_ipam_subnets(self) -> Dict[str, Any]:
+        return {
+            "subnets": [
+                {"cidr": "10.0.1.0/24", "gateway": "10.0.1.1", "usage": "12/254 IPs (4.7%)", "vlan": 10},
+                {"cidr": "10.0.2.0/24", "gateway": "10.0.2.1", "usage": "4/254 IPs (1.5%)", "vlan": 20},
+                {"cidr": "103.185.120.0/28", "gateway": "103.185.120.1", "usage": "4/14 IPs (Public)", "vlan": 99}
+            ],
+            "elastic_ips": [
+                {"ip": "103.185.120.8", "attached_to": "VM 101 (Ubuntu Prod)", "status": "Routed"},
+                {"ip": "103.185.120.9", "attached_to": "Unassigned", "status": "Available in Pool"}
+            ]
+        }
+
+    # ----------------- AI INCIDENT RESPONDER & PAGERDUTY -----------------
+    async def get_incidents(self) -> List[Dict[str, Any]]:
+        return [
+            {
+                "id": "INC-0492",
+                "title": "BGP Session Flap with Hurricane Electric",
+                "severity": "Sev-3 (Minor)",
+                "status": "Resolved",
+                "timeline": [
+                    {"time": "14:10:00", "event": "BGP Keepalive missed for AS6939"},
+                    {"time": "14:10:15", "event": "Route convergence shifted traffic to Telia (AS1299)"},
+                    {"time": "14:11:30", "event": "BGP Session re-established"}
+                ],
+                "ai_summary": "Transient packet loss upstream caused BGP to drop. Automated traffic engineering successfully re-routed all packets locally over Telia transit within 15 seconds. No noticeable downtime for end customers."
+            }
+        ]
+
 proxmox_client = ProxmoxClient()
 
 

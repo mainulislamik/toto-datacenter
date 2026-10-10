@@ -34,6 +34,11 @@ import {
   GitFork,
   Clock,
   Network,
+  Box,
+  Lock,
+  MapPin,
+  Flame,
+  CreditCard,
   X
 } from 'lucide-react';
 
@@ -84,12 +89,17 @@ export default function Sidebar({
   ];
 
   const opsBillingItems = [
+    { id: 'serverless-paas', label: 'Serverless App Platform', icon: Box, badge: 'PaaS' },
     { id: 'iac', label: 'Terraform & Cloud-Init IaC', icon: Code, badge: 'IaC' },
+    { id: 'zero-trust', label: 'Zero-Trust IAM Bastion', icon: Lock, badge: 'MFA' },
     { id: 'cron', label: 'Global Cron Orchestrator', icon: Clock, badge: 'Auto' },
     { id: 'autoscaler', label: 'Dynamic Auto-Scaler', icon: TrendingUp, badge: 'Elastic' },
+    { id: 'ipam', label: 'Enterprise IPAM', icon: MapPin, badge: 'Elastic-IP' },
     { id: 'metrics', label: 'Observability & Metrics', icon: Activity, badge: '5s' },
     { id: 'terminal', label: 'Node Web Terminal', icon: Terminal, badge: 'CLI' },
     { id: 'audit', label: 'Compliance & Audit Ledger', icon: FileText, badge: 'SOC2' },
+    { id: 'incident', label: 'AI Incident PagerDuty', icon: Flame, badge: 'Alert' },
+    { id: 'finops', label: 'FinOps Cost Analytics', icon: CreditCard, badge: 'Save' },
     { id: 'billing', label: 'Metering & Multi-Tenant', icon: DollarSign, badge: 'PAYG' },
     { id: 'ai-ops', label: 'AI Cloud Architect', icon: Bot, badge: 'AI' },
     ...(isSuperAdmin ? [{ id: 'users', label: 'Tenants & RBAC Quotas', icon: Users, badge: 'Admin' }] : []),

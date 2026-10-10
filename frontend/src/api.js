@@ -431,6 +431,21 @@ export const api = {
 
   // Reverse DNS (rDNS / PTR)
   getRDNSRecords: () => request('/dns/rdns'),
+
+  // Serverless PaaS & App Platform
+  getServerlessApps: () => request('/paas/apps'),
+
+  // Zero-Trust VPN & IAM Bastion
+  getZeroTrustSessions: () => request('/security/zero-trust'),
+
+  // Datacenter FinOps & Cost Optimizer
+  getFinOpsAnalytics: () => request('/billing/finops'),
+
+  // Enterprise IPAM & Elastic IP
+  getIPAMSubnets: () => request('/network/ipam'),
+
+  // AI Incident Responder & PagerDuty
+  getIncidents: () => request('/incidents'),
 };
 
 export default api;
