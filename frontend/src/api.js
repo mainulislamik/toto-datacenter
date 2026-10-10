@@ -166,6 +166,8 @@ export const api = {
   // Virtual Machines (KVM)
   getVMs: (node = 'pve') => request(`/vms?node=${node}`),
   getVMDetails: (vmid, node = 'pve') => request(`/vms/${vmid}?node=${node}`),
+  getVMConfig: (vmid, node = 'pve') => request(`/vms/${vmid}/config?node=${node}`),
+  updateVMConfig: (vmid, config, node = 'pve') => request(`/vms/${vmid}/config?node=${node}`, { method: 'PUT', body: config }),
   createVM: (data) =>
     request('/vms', {
       method: 'POST',
@@ -175,10 +177,23 @@ export const api = {
     request(`/vms/${vmid}/start?node=${node}`, { method: 'POST' }),
   stopVM: (vmid, node = 'pve') =>
     request(`/vms/${vmid}/stop?node=${node}`, { method: 'POST' }),
+  shutdownVM: (vmid, node = 'pve') =>
+    request(`/vms/${vmid}/shutdown?node=${node}`, { method: 'POST' }),
+  resetVM: (vmid, node = 'pve') =>
+    request(`/vms/${vmid}/reset?node=${node}`, { method: 'POST' }),
+  suspendVM: (vmid, node = 'pve') =>
+    request(`/vms/${vmid}/suspend?node=${node}`, { method: 'POST' }),
+  resumeVM: (vmid, node = 'pve') =>
+    request(`/vms/${vmid}/resume?node=${node}`, { method: 'POST' }),
   rebootVM: (vmid, node = 'pve') =>
     request(`/vms/${vmid}/reboot?node=${node}`, { method: 'POST' }),
+  resizeVMDisk: (vmid, disk, size, node = 'pve') =>
+    request(`/vms/${vmid}/resize?node=${node}`, { method: 'POST', body: { disk, size } }),
+  getVMVNC: (vmid, node = 'pve') => request(`/vms/${vmid}/vnc?node=${node}`),
   deleteVM: (vmid, node = 'pve') =>
     request(`/vms/${vmid}?node=${node}`, { method: 'DELETE' }),
+  vmAction: (vmid, action, node = 'pve') =>
+    request(`/vms/${vmid}/${action}?node=${node}`, { method: 'POST' }),
   migrateVM: (vmid, targetNode, online = true, sourceNode = 'pve') =>
     request(`/vms/${vmid}/migrate`, {
       method: 'POST',

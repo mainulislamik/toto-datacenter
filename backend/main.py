@@ -45,12 +45,29 @@ app.add_middleware(
 class VMCreateRequest(BaseModel):
     name: str
     cores: int = 2
-    memory_mb: int = 2048
-    disk_gb: int = 20
+    memory_mb: Optional[int] = None
+    memory: Optional[int] = None
+    disk_gb: Optional[int] = None
+    disk: Optional[int] = None
     iso_volid: Optional[str] = None
+    iso: Optional[str] = None
+    storage: Optional[str] = "local-lvm"
     ostype: str = "l26"
     net0: str = "virtio,bridge=vmbr0,firewall=1"
     node: str = "pve"
+    start_on_create: bool = False
+
+class VMConfigUpdateRequest(BaseModel):
+    cores: Optional[int] = None
+    memory: Optional[int] = None
+    name: Optional[str] = None
+    iso_volid: Optional[str] = None
+    boot: Optional[str] = None
+    onboot: Optional[int] = None
+
+class VMResizeRequest(BaseModel):
+    disk: str = "scsi0"
+    size: str = "+10G"
 
 class LXCCreateRequest(BaseModel):
     hostname: str
@@ -324,9 +341,53 @@ async def list_vms(node: str = "pve", current_user: Dict[str, Any] = Depends(get
     try:
         vms = await proxmox_client.get_vms(node=node)
         # Filter if non-admin
-        if current_user.get("role") != "admin":
+        if current_user.get("role") not in ["admin", "super_admin"]:
             vms = [v for v in vms if str(v.get("vmid")) in current_user.get("allowed_vms", []) or current_user.get("username") in v.get("name", "")]
         return vms
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/api/vms/{vmid}")
+@app.get("/api/vms/{vmid}/status")
+async def get_virtual_machine_status(vmid: int, node: str = "pve", current_user: Dict[str, Any] = Depends(get_current_user)):
+    try:
+        return await proxmox_client.get_vm_status(vmid, node=node)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/api/vms/{vmid}/config")
+async def get_virtual_machine_config(vmid: int, node: str = "pve", current_user: Dict[str, Any] = Depends(get_current_user)):
+    try:
+        return await proxmox_client.get_vm_config(vmid, node=node)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.put("/api/vms/{vmid}/config")
+async def update_virtual_machine_config(
+    vmid: int,
+    req: VMConfigUpdateRequest,
+    node: str = "pve",
+    current_user: Dict[str, Any] = Depends(get_current_user)
+):
+    try:
+        config = {}
+        if req.cores is not None:
+            config["cores"] = req.cores
+        if req.memory is not None:
+            config["memory"] = req.memory
+        if req.name is not None:
+            config["name"] = req.name
+        if req.boot is not None:
+            config["boot"] = req.boot
+        if req.onboot is not None:
+            config["onboot"] = req.onboot
+        if req.iso_volid is not None:
+            if req.iso_volid == "" or req.iso_volid.lower() == "none":
+                config["ide2"] = "none,media=cdrom"
+            else:
+                config["ide2"] = f"{req.iso_volid},media=cdrom"
+
+        return await proxmox_client.update_vm_config(vmid, config, node=node)
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
@@ -342,21 +403,37 @@ async def create_virtual_machine(
         used_ids = [int(v["vmid"]) for v in existing]
         next_vmid = max(used_ids + [100]) + 1
 
+        mem = req.memory or req.memory_mb or 2048
+        disk = req.disk or req.disk_gb or 20
+        iso_val = req.iso or req.iso_volid
+        storage_pool = req.storage or "local-lvm"
+
         config = {
             "vmid": next_vmid,
             "name": req.name,
             "cores": req.cores,
-            "memory": req.memory_mb,
+            "memory": mem,
             "scsihw": "virtio-scsi-pci",
-            "scsi0": f"local-lvm:{req.disk_gb}",
+            "scsi0": f"{storage_pool}:{disk}",
             "net0": req.net0,
             "ostype": req.ostype,
             "boot": "order=scsi0;ide2;net0"
         }
-        if req.iso_volid:
-            config["ide2"] = f"{req.iso_volid},media=cdrom"
+        if iso_val:
+            config["ide2"] = f"{iso_val},media=cdrom"
 
         res = await proxmox_client.create_vm(config, node=req.node)
+        
+        if req.start_on_create:
+            import asyncio
+            async def delayed_start():
+                await asyncio.sleep(3)
+                try:
+                    await proxmox_client.start_vm(next_vmid, node=req.node)
+                except Exception:
+                    pass
+            asyncio.create_task(delayed_start())
+
         return {"status": "success", "vmid": next_vmid, "task": res}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
@@ -377,11 +454,62 @@ async def stop_virtual_machine(vmid: int, node: str = "pve", current_user: Dict[
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
+@app.post("/api/vms/{vmid}/shutdown")
+async def shutdown_virtual_machine(vmid: int, node: str = "pve", current_user: Dict[str, Any] = Depends(get_current_user)):
+    try:
+        await proxmox_client.shutdown_vm(vmid, node=node)
+        return {"status": "success", "message": f"VM {vmid} ACPI shutdown requested"}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/api/vms/{vmid}/reset")
+async def reset_virtual_machine(vmid: int, node: str = "pve", current_user: Dict[str, Any] = Depends(get_current_user)):
+    try:
+        await proxmox_client.reset_vm(vmid, node=node)
+        return {"status": "success", "message": f"VM {vmid} reset"}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/api/vms/{vmid}/suspend")
+async def suspend_virtual_machine(vmid: int, node: str = "pve", current_user: Dict[str, Any] = Depends(get_current_user)):
+    try:
+        await proxmox_client.suspend_vm(vmid, node=node)
+        return {"status": "success", "message": f"VM {vmid} suspended"}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/api/vms/{vmid}/resume")
+async def resume_virtual_machine(vmid: int, node: str = "pve", current_user: Dict[str, Any] = Depends(get_current_user)):
+    try:
+        await proxmox_client.resume_vm(vmid, node=node)
+        return {"status": "success", "message": f"VM {vmid} resumed"}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
 @app.post("/api/vms/{vmid}/reboot")
 async def reboot_virtual_machine(vmid: int, node: str = "pve", current_user: Dict[str, Any] = Depends(get_current_user)):
     try:
         await proxmox_client.reboot_vm(vmid, node=node)
         return {"status": "success", "message": f"VM {vmid} rebooted"}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/api/vms/{vmid}/resize")
+async def resize_virtual_machine_disk(
+    vmid: int,
+    req: VMResizeRequest,
+    node: str = "pve",
+    current_user: Dict[str, Any] = Depends(get_current_user)
+):
+    try:
+        return await proxmox_client.resize_vm_disk(vmid, req.disk, req.size, node=node)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/api/vms/{vmid}/vnc")
+async def get_virtual_machine_vnc(vmid: int, node: str = "pve", current_user: Dict[str, Any] = Depends(get_current_user)):
+    try:
+        return await proxmox_client.get_vm_vnc(vmid, node=node)
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
@@ -399,7 +527,7 @@ async def delete_virtual_machine(vmid: int, node: str = "pve", admin_user: Dict[
 async def list_lxcs(node: str = "pve", current_user: Dict[str, Any] = Depends(get_current_user)):
     try:
         lxcs = await proxmox_client.get_lxcs(node=node)
-        if current_user.get("role") != "admin":
+        if current_user.get("role") not in ["admin", "super_admin"]:
             lxcs = [l for l in lxcs if str(l.get("vmid")) in current_user.get("allowed_lxcs", []) or current_user.get("username") in l.get("name", "")]
         return lxcs
     except Exception as e:
