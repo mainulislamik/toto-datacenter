@@ -154,8 +154,9 @@ export const api = {
     }),
 
   // Datacenter Overview & Metrics
-  getDatacenterOverview: () => request('/overview'),
-  getOverview: () => request('/overview'),
+  getDatacenterOverview: () => request('/datacenter/overview'),
+  getOverview: () => request('/datacenter/overview'),
+  getMetrics: (timeframe = 'hour') => request(`/datacenter/metrics?timeframe=${timeframe}`),
 
   // Cluster & Scale-Out
   getClusterNodes: () => request('/cluster/nodes'),

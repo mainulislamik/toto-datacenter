@@ -248,6 +248,7 @@ async def migrate_instance(req: MigrateRequest, admin_user: Dict[str, Any] = Dep
 # ----------------- DATACENTER OVERVIEW -----------------
 
 @app.get("/api/datacenter/overview")
+@app.get("/api/overview")
 async def get_datacenter_overview(current_user: Dict[str, Any] = Depends(get_current_user)):
     try:
         node_status = await proxmox_client.get_node_status("pve")
