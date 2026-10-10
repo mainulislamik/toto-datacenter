@@ -350,6 +350,30 @@ export const api = {
   // Real-time Metrics & Process Manager
   getRealtimeMetrics: () => request('/metrics/realtime'),
   killProcess: (pid) => request(`/metrics/processes/${pid}/kill`, { method: 'POST' }),
+
+  // Kubernetes & K3s Engine
+  getK8sCluster: () => request('/k8s/cluster'),
+  applyK8sManifest: (manifest) => request('/k8s/manifest', { method: 'POST', body: { manifest } }),
+
+  // SSH Keyring Vault
+  getSSHKeys: () => request('/ssh/keys'),
+  createSSHKey: (data) => request('/ssh/keys', { method: 'POST', body: data }),
+  deleteSSHKey: (keyId) => request(`/ssh/keys/${keyId}`, { method: 'DELETE' }),
+  injectSSHKey: (data) => request('/ssh/inject', { method: 'POST', body: data }),
+
+  // S3 Object Storage Buckets
+  getS3Buckets: () => request('/buckets'),
+  createS3Bucket: (data) => request('/buckets', { method: 'POST', body: data }),
+  deleteS3Bucket: (name) => request(`/buckets/${encodeURIComponent(name)}`, { method: 'DELETE' }),
+
+  // Autoscaling & Self-Healing Policies
+  getAutoscalingPolicies: () => request('/autoscaler/policies'),
+  createAutoscalingPolicy: (data) => request('/autoscaler/policies', { method: 'POST', body: data }),
+  toggleAutoscalingPolicy: (id) => request(`/autoscaler/policies/${id}/toggle`, { method: 'POST' }),
+
+  // Security & Vulnerability Audit
+  getSecurityAudit: () => request('/security/audit'),
+  triggerSecurityScan: () => request('/security/scan-now', { method: 'POST' }),
 };
 
 export default api;

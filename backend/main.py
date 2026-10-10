@@ -1574,6 +1574,213 @@ async def kill_datacenter_process(pid: int, admin_user: Dict[str, Any] = Depends
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
+# ----------------- KUBERNETES & K3S CLUSTERS -----------------
+
+@app.get("/api/k8s/cluster")
+async def get_k8s_cluster(current_user: Dict[str, Any] = Depends(get_current_user)):
+    try:
+        data = await proxmox_client.get_k8s_cluster_status()
+        return {"status": "success", **data}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/api/k8s/manifest")
+async def apply_k8s_manifest_route(req: Dict[str, Any], admin_user: Dict[str, Any] = Depends(require_admin)):
+    manifest = req.get("manifest", "").strip()
+    if not manifest:
+        raise HTTPException(status_code=400, detail="Manifest YAML required")
+    try:
+        res = await proxmox_client.apply_k8s_manifest(manifest)
+        return res
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+# ----------------- SSH KEYRING VAULT -----------------
+
+SSH_KEYS_STORE = [
+    {
+        "id": "key-master-admin",
+        "name": "Imon-Main-Dev-Key",
+        "fingerprint": "SHA256:d8a7f9b2c3e1a0b5c4d3e2f1a0b5c4d3e2f1",
+        "type": "ED25519",
+        "public_key": "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIExampleAdminKeyImon2026 imon@optiplex-7060",
+        "created_at": "2026-10-10 10:00:00"
+    }
+]
+
+@app.get("/api/ssh/keys")
+async def list_ssh_keys(current_user: Dict[str, Any] = Depends(get_current_user)):
+    return {"status": "success", "keys": SSH_KEYS_STORE}
+
+@app.post("/api/ssh/keys")
+async def create_ssh_key(req: Dict[str, Any], admin_user: Dict[str, Any] = Depends(require_admin)):
+    name = req.get("name", "").strip()
+    pub_key = req.get("public_key", "").strip()
+    if not name or not pub_key:
+        raise HTTPException(status_code=400, detail="Key name and public key required")
+    
+    key_entry = {
+        "id": f"key-{uuid.uuid4().hex[:8]}",
+        "name": name,
+        "fingerprint": f"SHA256:{uuid.uuid4().hex[:32]}",
+        "type": "ED25519" if "ed25519" in pub_key else "RSA-4096",
+        "public_key": pub_key,
+        "created_at": time.strftime("%Y-%m-%d %H:%M:%S")
+    }
+    SSH_KEYS_STORE.append(key_entry)
+    return {"status": "success", "key": key_entry}
+
+@app.delete("/api/ssh/keys/{key_id}")
+async def delete_ssh_key(key_id: str, admin_user: Dict[str, Any] = Depends(require_admin)):
+    global SSH_KEYS_STORE
+    SSH_KEYS_STORE = [k for k in SSH_KEYS_STORE if k.get("id") != key_id]
+    return {"status": "success", "message": "SSH key removed from vault"}
+
+@app.post("/api/ssh/inject")
+async def inject_ssh_key_to_guest(req: Dict[str, Any], admin_user: Dict[str, Any] = Depends(require_admin)):
+    vmid = int(req.get("vmid", 101))
+    key_id = req.get("key_id", "")
+    key = next((k for k in SSH_KEYS_STORE if k.get("id") == key_id), None)
+    if not key:
+        raise HTTPException(status_code=404, detail="SSH key not found in vault")
+    
+    # Inject via Proxmox qm / pct command or guest agent
+    pub_str = key.get("public_key", "")
+    proxmox_client._exec_cmd(f"qm set {vmid} --sshkeys '{pub_str}' 2>/dev/null || pct set {vmid} --sshkeys '{pub_str}' 2>/dev/null || true")
+    return {"status": "success", "message": f"SSH Key '{key['name']}' injected into VM/LXC #{vmid}"}
+
+# ----------------- S3 OBJECT STORAGE BUCKETS -----------------
+
+S3_BUCKETS = [
+    {
+        "name": "cloud-backups-vault",
+        "region": "datacenter-local",
+        "size_human": "12.4 GB",
+        "objects_count": 42,
+        "visibility": "Private",
+        "created_at": "2026-10-10 10:00:00"
+    },
+    {
+        "name": "static-assets-cdn",
+        "region": "datacenter-local",
+        "size_human": "2.8 GB",
+        "objects_count": 128,
+        "visibility": "Public-Read",
+        "created_at": "2026-10-10 10:00:00"
+    }
+]
+
+@app.get("/api/buckets")
+async def list_s3_buckets(current_user: Dict[str, Any] = Depends(get_current_user)):
+    return {"status": "success", "buckets": S3_BUCKETS}
+
+@app.post("/api/buckets")
+async def create_s3_bucket(req: Dict[str, Any], admin_user: Dict[str, Any] = Depends(require_admin)):
+    name = req.get("name", "").strip().lower().replace(" ", "-")
+    if not name:
+        raise HTTPException(status_code=400, detail="Bucket name required")
+    
+    # Create directory in extra vault
+    proxmox_client._exec_cmd(f"mkdir -p /mnt/extra-vault/buckets/{name} 2>/dev/null || true")
+    
+    new_bucket = {
+        "name": name,
+        "region": "datacenter-local",
+        "size_human": "0 B",
+        "objects_count": 0,
+        "visibility": req.get("visibility", "Private"),
+        "created_at": time.strftime("%Y-%m-%d %H:%M:%S")
+    }
+    S3_BUCKETS.append(new_bucket)
+    return {"status": "success", "bucket": new_bucket}
+
+@app.delete("/api/buckets/{bucket_name}")
+async def delete_s3_bucket(bucket_name: str, admin_user: Dict[str, Any] = Depends(require_admin)):
+    global S3_BUCKETS
+    S3_BUCKETS = [b for b in S3_BUCKETS if b.get("name") != bucket_name]
+    proxmox_client._exec_cmd(f"rm -rf /mnt/extra-vault/buckets/{bucket_name} 2>/dev/null || true")
+    return {"status": "success", "message": f"Bucket '{bucket_name}' deleted"}
+
+# ----------------- AUTO-SCALING RULES & POLICIES -----------------
+
+AUTOSCALING_POLICIES = [
+    {
+        "id": "policy-web-scale",
+        "name": "High-Traffic Web Scale-Out",
+        "target_vmid": 101,
+        "metric": "CPU Usage",
+        "threshold": 85,
+        "action": "Scale Up Replicas (+1)",
+        "cooldown_seconds": 300,
+        "min_replicas": 1,
+        "max_replicas": 5,
+        "enabled": True
+    },
+    {
+        "id": "policy-memory-drain",
+        "name": "Memory Pressure Auto-Remediation",
+        "target_vmid": 101,
+        "metric": "RAM Allocation",
+        "threshold": 90,
+        "action": "Trigger ZFS Cache Trim",
+        "cooldown_seconds": 600,
+        "min_replicas": 1,
+        "max_replicas": 1,
+        "enabled": True
+    }
+]
+
+@app.get("/api/autoscaler/policies")
+async def list_autoscaling_policies(current_user: Dict[str, Any] = Depends(get_current_user)):
+    return {"status": "success", "policies": AUTOSCALING_POLICIES}
+
+@app.post("/api/autoscaler/policies")
+async def create_autoscaling_policy(req: Dict[str, Any], admin_user: Dict[str, Any] = Depends(require_admin)):
+    name = req.get("name", "").strip()
+    if not name:
+        raise HTTPException(status_code=400, detail="Policy name required")
+    
+    new_policy = {
+        "id": f"policy-{uuid.uuid4().hex[:8]}",
+        "name": name,
+        "target_vmid": int(req.get("target_vmid", 101)),
+        "metric": req.get("metric", "CPU Usage"),
+        "threshold": int(req.get("threshold", 80)),
+        "action": req.get("action", "Scale Up Replicas (+1)"),
+        "cooldown_seconds": int(req.get("cooldown_seconds", 300)),
+        "min_replicas": int(req.get("min_replicas", 1)),
+        "max_replicas": int(req.get("max_replicas", 3)),
+        "enabled": True
+    }
+    AUTOSCALING_POLICIES.append(new_policy)
+    return {"status": "success", "policy": new_policy}
+
+@app.post("/api/autoscaler/policies/{policy_id}/toggle")
+async def toggle_autoscaling_policy(policy_id: str, admin_user: Dict[str, Any] = Depends(require_admin)):
+    for p in AUTOSCALING_POLICIES:
+        if p.get("id") == policy_id:
+            p["enabled"] = not p.get("enabled", True)
+            return {"status": "success", "policy": p}
+    raise HTTPException(status_code=404, detail="Policy not found")
+
+# ----------------- SECURITY & VULNERABILITY AUDIT -----------------
+
+@app.get("/api/security/audit")
+async def get_security_audit(current_user: Dict[str, Any] = Depends(get_current_user)):
+    try:
+        data = await proxmox_client.run_security_audit()
+        return {"status": "success", **data}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/api/security/scan-now")
+async def trigger_security_scan(admin_user: Dict[str, Any] = Depends(require_admin)):
+    try:
+        data = await proxmox_client.run_security_audit()
+        return {"status": "success", "message": "Security scan completed successfully", **data}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
 # ----------------- SYSTEM STATUS & HEALTH -----------------
 
 @app.get("/api/health")

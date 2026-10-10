@@ -20,6 +20,11 @@ import DockerOrchestratorView from './components/DockerOrchestratorView';
 import SSLProxyManagerView from './components/SSLProxyManagerView';
 import FileManagerView from './components/FileManagerView';
 import LiveMetricsView from './components/LiveMetricsView';
+import KubernetesClusterView from './components/KubernetesClusterView';
+import SSHKeyringVaultView from './components/SSHKeyringVaultView';
+import S3StorageBucketsView from './components/S3StorageBucketsView';
+import AutoScalerPolicyView from './components/AutoScalerPolicyView';
+import SecurityAuditScannerView from './components/SecurityAuditScannerView';
 import CommandPaletteModal from './components/CommandPaletteModal';
 import NotificationsSettingsModal from './components/NotificationsSettingsModal';
 import VNCConsoleModal from './components/VNCConsoleModal';
@@ -34,14 +39,19 @@ const TAB_TITLES = {
   vms: 'KVM Virtual Machines',
   lxc: 'LXC Micro-Containers',
   docker: 'Docker Engine & Compose Stacks',
+  k8s: 'Kubernetes K3s Micro-Cluster',
   marketplace: '1-Click App Marketplace & Instant VM',
   proxy: 'Reverse Proxy & Auto-SSL Gateway',
   firewall: 'SDN & Visual Cloud Firewall Hub',
   vpc: 'VPC Subnets & Software-Defined Networking',
   ha: 'High Availability (HA) & Self-Healing Watchdog',
+  'security-audit': 'Security & CVE Vulnerability Scanner',
+  'ssh-keys': 'SSH Keyring Vault & Key Injection',
   storage: 'Storage & Dedicated ISO Vault',
+  buckets: 'S3 Object Storage Buckets',
   files: 'Cloud File Explorer & Config Editor',
   backups: 'Auto-Backup & Disaster Recovery VZDump',
+  autoscaler: 'Dynamic Auto-Scaler & Policy Engine',
   metrics: 'Real-Time Observability & Process Tree',
   terminal: 'Node Web Terminal & Diagnostic Shell',
   billing: 'Resource Metering & Multi-Tenant Billing',
@@ -162,6 +172,9 @@ export default function App() {
             {activeTab === 'docker' && (
               <DockerOrchestratorView />
             )}
+            {activeTab === 'k8s' && (
+              <KubernetesClusterView />
+            )}
             {activeTab === 'marketplace' && (
               <MarketplaceView onDeployed={() => setActiveTab('vms')} />
             )}
@@ -177,14 +190,26 @@ export default function App() {
             {activeTab === 'ha' && (
               <ClusterHAView />
             )}
+            {activeTab === 'security-audit' && (
+              <SecurityAuditScannerView />
+            )}
+            {activeTab === 'ssh-keys' && (
+              <SSHKeyringVaultView />
+            )}
             {activeTab === 'storage' && (
               <StorageView />
+            )}
+            {activeTab === 'buckets' && (
+              <S3StorageBucketsView />
             )}
             {activeTab === 'files' && (
               <FileManagerView />
             )}
             {activeTab === 'backups' && (
               <BackupSchedulerView />
+            )}
+            {activeTab === 'autoscaler' && (
+              <AutoScalerPolicyView />
             )}
             {activeTab === 'metrics' && (
               <LiveMetricsView />
@@ -216,7 +241,7 @@ export default function App() {
               <span className="font-semibold text-slate-700">Enterprise Next-Gen Cloud Platform v3.0</span>
             </div>
             <div className="text-slate-600 font-semibold">
-              Proxmox VE 8.4 • Docker Moby • Let's Encrypt SSL • SDN VPC • 100GB Extra Vault
+              Proxmox VE 8.4 • K3s Kubernetes • S3 Storage • Auto-Scaler • Let's Encrypt SSL
             </div>
           </div>
         </footer>
