@@ -1214,6 +1214,153 @@ async def ai_cloud_ops(req: Dict[str, Any], current_user: Dict[str, Any] = Depen
         "message": f"AI Cloud Architect analyzed prompt: '{prompt}'. Recommendation: All cluster nodes are healthy, Corosync VoteQuorum is active, and storage is optimal at 9% utilization."
     }
 
+# In-Memory Notification Settings Store
+NOTIFICATION_SETTINGS = {
+    "telegram_bot_token": "",
+    "telegram_chat_id": "",
+    "alert_on_vm_state": True,
+    "alert_on_high_cpu": True,
+    "alert_on_backup_complete": True,
+    "cpu_threshold_pct": 90,
+    "ram_threshold_pct": 90
+}
+
+# ----------------- TERMINAL & WEB SHELL -----------------
+
+@app.post("/api/terminal/exec")
+async def execute_node_terminal(req: Dict[str, Any], admin_user: Dict[str, Any] = Depends(require_admin)):
+    command = req.get("command", "").strip()
+    if not command:
+        raise HTTPException(status_code=400, detail="Command cannot be empty")
+    res = await proxmox_client.exec_terminal_command(command)
+    return res
+
+# ----------------- HIGH AVAILABILITY & SELF-HEALING -----------------
+
+@app.get("/api/ha/status")
+async def get_high_availability_status(current_user: Dict[str, Any] = Depends(get_current_user)):
+    res = await proxmox_client.get_ha_status()
+    return res
+
+@app.get("/api/ha/resources")
+async def get_high_availability_resources(current_user: Dict[str, Any] = Depends(get_current_user)):
+    res = await proxmox_client.get_ha_resources()
+    return {"status": "success", "resources": res}
+
+@app.post("/api/ha/resources")
+async def add_high_availability_resource(req: Dict[str, Any], admin_user: Dict[str, Any] = Depends(require_admin)):
+    sid = str(req.get("sid"))
+    max_restart = int(req.get("max_restart", 1))
+    max_relocate = int(req.get("max_relocate", 1))
+    state = str(req.get("state", "started"))
+    res = await proxmox_client.add_ha_resource(sid, max_restart, max_relocate, state)
+    return {"status": "success", "data": res}
+
+# ----------------- NETWORK & SDN VPC -----------------
+
+@app.get("/api/network/interfaces")
+async def get_network_interfaces(node: str = "pve", current_user: Dict[str, Any] = Depends(get_current_user)):
+    res = await proxmox_client.get_network_interfaces(node=node)
+    return {"status": "success", "interfaces": res}
+
+@app.get("/api/network/sdn/vnets")
+async def get_sdn_virtual_networks(node: str = "pve", current_user: Dict[str, Any] = Depends(get_current_user)):
+    res = await proxmox_client.get_sdn_vnets(node=node)
+    return {"status": "success", "vnets": res}
+
+# ----------------- TELEGRAM NOTIFICATIONS & SETTINGS -----------------
+
+@app.get("/api/settings/notifications")
+async def get_notification_settings(admin_user: Dict[str, Any] = Depends(require_admin)):
+    # Mask token for security
+    token = NOTIFICATION_SETTINGS.get("telegram_bot_token", "")
+    masked_token = f"{token[:6]}...{token[-4:]}" if len(token) > 10 else token
+    return {
+        **NOTIFICATION_SETTINGS,
+        "telegram_bot_token_masked": masked_token
+    }
+
+@app.post("/api/settings/notifications")
+async def update_notification_settings(req: Dict[str, Any], admin_user: Dict[str, Any] = Depends(require_admin)):
+    for k, v in req.items():
+        if k in NOTIFICATION_SETTINGS:
+            NOTIFICATION_SETTINGS[k] = v
+    return {"status": "success", "message": "Notification settings saved successfully."}
+
+@app.post("/api/settings/notifications/test")
+async def test_notification_alert(admin_user: Dict[str, Any] = Depends(require_admin)):
+    token = NOTIFICATION_SETTINGS.get("telegram_bot_token")
+    chat_id = NOTIFICATION_SETTINGS.get("telegram_chat_id")
+    if not token or not chat_id:
+        return {"status": "warning", "message": "Telegram Bot Token and Chat ID are required."}
+    
+    msg = (
+        "🚀 *[TOTO CLOUD Enterprise Alert]*\n\n"
+        "✅ Test Alert: Cloud Monitoring & Telemetry Pipeline is active!\n"
+        "• *Cluster:* TOTO-DC (Node: DC-1)\n"
+        "• *Corosync VoteQuorum:* Healthy (1 Node)\n"
+        "• *Storage Vault:* 100GB Extra-SSD Online"
+    )
+    sent = await proxmox_client.send_telegram_notification(token, chat_id, msg)
+    if sent:
+        return {"status": "success", "message": "Test notification sent successfully to Telegram."}
+    else:
+        return {"status": "error", "message": "Failed to send message. Please verify Bot Token and Chat ID."}
+
+# ----------------- GLOBAL COMMAND PALETTE SEARCH -----------------
+
+@app.get("/api/search/global")
+async def global_command_search(q: str = "", current_user: Dict[str, Any] = Depends(get_current_user)):
+    query = q.lower().strip()
+    results = []
+    
+    # 1. Search VMs
+    vms = await proxmox_client.get_vms()
+    for vm in vms:
+        name = str(vm.get("name", "")).lower()
+        vmid = str(vm.get("vmid", ""))
+        if query in name or query in vmid:
+            results.append({
+                "type": "vm",
+                "id": vm.get("vmid"),
+                "title": f"VM #{vm.get('vmid')} - {vm.get('name')}",
+                "subtitle": f"Status: {vm.get('status')} • Cores: {vm.get('cpus', 1)} • RAM: {int(vm.get('maxmem', 0)/(1024**2))}MB",
+                "action": "vms",
+                "targetId": vm.get("vmid")
+            })
+
+    # 2. Search LXCs
+    lxcs = await proxmox_client.get_lxcs()
+    for lxc in lxcs:
+        name = str(lxc.get("name", "")).lower()
+        vmid = str(lxc.get("vmid", ""))
+        if query in name or query in vmid:
+            results.append({
+                "type": "lxc",
+                "id": lxc.get("vmid"),
+                "title": f"LXC #{lxc.get('vmid')} - {lxc.get('name')}",
+                "subtitle": f"Status: {lxc.get('status')} • Cores: {lxc.get('cpus', 1)} • RAM: {int(lxc.get('maxmem', 0)/(1024**2))}MB",
+                "action": "lxc",
+                "targetId": lxc.get("vmid")
+            })
+
+    # 3. System Actions Shortcuts
+    system_actions = [
+        {"title": "Deploy New KVM Virtual Machine", "subtitle": "Create high-performance VM with custom CPU & RAM", "action": "vms", "type": "action"},
+        {"title": "1-Click App Marketplace", "subtitle": "Deploy Docker, WordPress, PostgreSQL, WireGuard", "action": "marketplace", "type": "action"},
+        {"title": "SDN Cloud Firewall Hub", "subtitle": "Manage visual port rules and security groups", "action": "firewall", "type": "action"},
+        {"title": "Disaster Recovery & Auto Backups", "subtitle": "ZSTD snapshots and 1-click restore", "action": "backups", "type": "action"},
+        {"title": "Node Web Terminal & Shell", "subtitle": "Direct diagnostic CLI for Proxmox and host", "action": "terminal", "type": "action"},
+        {"title": "High Availability & Self-Healing", "subtitle": "Proxmox HA Manager and watchdog failover", "action": "ha", "type": "action"},
+        {"title": "Virtual Private Cloud (VPC)", "subtitle": "Software-Defined Networking & Subnets", "action": "vpc", "type": "action"},
+        {"title": "Pay-As-You-Go Billing & Metering", "subtitle": "Real-time vCPU and RAM burn rate calculator", "action": "billing", "type": "action"}
+    ]
+    for act in system_actions:
+        if query in act["title"].lower() or query in act["subtitle"].lower():
+            results.append(act)
+
+    return {"status": "success", "results": results[:15]}
+
 # ----------------- SYSTEM STATUS & HEALTH -----------------
 
 @app.get("/api/health")

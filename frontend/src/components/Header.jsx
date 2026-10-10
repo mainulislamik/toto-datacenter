@@ -17,7 +17,8 @@ export default function Header({
   onOpenSidebar, 
   activeTabTitle, 
   user,
-  onQuickRefresh
+  onOpenSearch,
+  onOpenNotifications
 }) {
   const isSuperAdmin = user?.role === 'super_admin';
 
@@ -50,6 +51,26 @@ export default function Header({
 
       {/* Right: Quick Actions & Status */}
       <div className="flex items-center space-x-3">
+        {/* Global Spotlight Search Trigger */}
+        <button
+          onClick={onOpenSearch}
+          className="hidden sm:flex items-center space-x-2 px-3 py-1.5 rounded-xl bg-slate-50 hover:bg-slate-100 text-slate-500 hover:text-slate-900 text-xs font-bold border border-slate-200 transition cursor-pointer"
+        >
+          <Search className="w-3.5 h-3.5 text-slate-400" />
+          <span>Search VMs, tasks...</span>
+          <kbd className="text-[10px] bg-white px-1.5 py-0.5 rounded border border-slate-200 text-slate-400 font-mono">⌘K</kbd>
+        </button>
+
+        {/* Telegram Notifications Center Trigger */}
+        <button
+          onClick={onOpenNotifications}
+          className="p-2 rounded-xl text-slate-600 hover:text-blue-600 hover:bg-slate-100 border border-slate-200 transition cursor-pointer relative"
+          title="Alerts & Telegram Notifications"
+        >
+          <Bell className="w-4 h-4" />
+          <span className="w-2 h-2 rounded-full bg-blue-600 absolute top-1.5 right-1.5"></span>
+        </button>
+
         {/* Proxmox Core Direct Link */}
         <a
           href="https://127.0.0.1:8006"

@@ -21,6 +21,7 @@ import {
   DollarSign,
   Bot,
   Shield,
+  Terminal,
   X
 } from 'lucide-react';
 
@@ -44,6 +45,8 @@ export default function Sidebar({
 
   const networkSecurityItems = [
     { id: 'firewall', label: 'SDN & Cloud Firewall', icon: Shield, badge: 'Guard' },
+    { id: 'vpc', label: 'VPC Subnets & Bridges', icon: Layers, badge: 'SDN' },
+    { id: 'ha', label: 'High Availability (HA)', icon: ShieldCheck, badge: 'Self-Heal' },
   ];
 
   const storageBackupItems = [
@@ -53,6 +56,7 @@ export default function Sidebar({
   ];
 
   const opsBillingItems = [
+    { id: 'terminal', label: 'Node Web Terminal', icon: Terminal, badge: 'CLI' },
     { id: 'billing', label: 'Metering & Multi-Tenant', icon: DollarSign, badge: 'PAYG' },
     { id: 'ai-ops', label: 'AI Cloud Architect', icon: Bot, badge: 'AI' },
     ...(isSuperAdmin ? [{ id: 'users', label: 'Tenants & RBAC Quotas', icon: Users, badge: 'Admin' }] : []),

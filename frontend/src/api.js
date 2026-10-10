@@ -305,6 +305,26 @@ export const api = {
 
   // AI Cloud Ops
   executeAIOps: (prompt) => request('/ai/execute-ops', { method: 'POST', body: { prompt } }),
+
+  // Terminal & Web Shell
+  execTerminalCommand: (command) => request('/terminal/exec', { method: 'POST', body: { command } }),
+
+  // High Availability
+  getHAStatus: () => request('/ha/status'),
+  getHAResources: () => request('/ha/resources'),
+  addHAResource: (data) => request('/ha/resources', { method: 'POST', body: data }),
+
+  // SDN & VPC
+  getNetworkInterfaces: (node = 'pve') => request(`/network/interfaces?node=${node}`),
+  getSDNVnets: (node = 'pve') => request(`/network/sdn/vnets?node=${node}`),
+
+  // Notifications & Alerts
+  getNotificationSettings: () => request('/settings/notifications'),
+  updateNotificationSettings: (data) => request('/settings/notifications', { method: 'POST', body: data }),
+  testNotificationAlert: () => request('/settings/notifications/test', { method: 'POST' }),
+
+  // Global Command Search
+  searchGlobal: (q) => request(`/search/global?q=${encodeURIComponent(q)}`),
 };
 
 export default api;

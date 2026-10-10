@@ -1,5 +1,6 @@
 import os
 import json
+import time
 import uuid
 import httpx
 import subprocess
@@ -650,5 +651,121 @@ class ProxmoxClient:
     async def restore_backup(self, volid: str, vmid: int, node: str = "pve") -> Dict[str, Any]:
         out = self._exec_cmd(f"qmrestore {volid} {vmid} --force 1 2>&1 || pct restore {vmid} {volid} --force 1")
         return {"status": "success", "output": out}
+
+    # ----------------- TERMINAL & SHELL EXECUTION -----------------
+    async def exec_terminal_command(self, command: str) -> Dict[str, Any]:
+        """Safely execute administrative or diagnostic command on Proxmox host"""
+        # Block destructive root commands
+        blocked = ["rm -rf /", "mkfs", "dd if=/dev/zero of=/dev/sd", "shutdown -h now", "init 0"]
+        for b in blocked:
+            if b in command:
+                return {"status": "error", "error": f"Command contains restricted pattern: {b}"}
+        
+        start_time = time.time()
+        out = self._exec_cmd(command)
+        duration = round(time.time() - start_time, 3)
+        return {
+            "status": "success",
+            "command": command,
+            "output": out,
+            "duration_sec": duration
+        }
+
+    # ----------------- HIGH AVAILABILITY (HA) -----------------
+    async def get_ha_status(self) -> Dict[str, Any]:
+        headers = await self._get_headers()
+        try:
+            async with httpx.AsyncClient(verify=False, timeout=10.0) as client:
+                resp = await client.get(f"{self.base_url}/cluster/ha/status/current", headers=headers)
+                if resp.status_code == 200:
+                    return {"status": "success", "data": resp.json().get("data", [])}
+        except Exception:
+            pass
+        out = self._exec_cmd("ha-manager status --output-format json 2>/dev/null || ha-manager status 2>/dev/null")
+        try:
+            return {"status": "success", "data": json.loads(out)}
+        except Exception:
+            return {"status": "success", "raw": out}
+
+    async def get_ha_resources(self) -> List[Dict[str, Any]]:
+        headers = await self._get_headers()
+        try:
+            async with httpx.AsyncClient(verify=False, timeout=10.0) as client:
+                resp = await client.get(f"{self.base_url}/cluster/ha/resources", headers=headers)
+                if resp.status_code == 200:
+                    return resp.json().get("data", [])
+        except Exception:
+            pass
+        out = self._exec_cmd("pvesh get /cluster/ha/resources --output-format json 2>/dev/null")
+        try:
+            return json.loads(out)
+        except Exception:
+            return []
+
+    async def add_ha_resource(self, sid: str, max_restart: int = 1, max_relocate: int = 1, state: str = "started") -> Dict[str, Any]:
+        headers = await self._get_headers()
+        data = {
+            "sid": sid,
+            "max_restart": max_restart,
+            "max_relocate": max_relocate,
+            "state": state
+        }
+        try:
+            async with httpx.AsyncClient(verify=False, timeout=10.0) as client:
+                resp = await client.post(f"{self.base_url}/cluster/ha/resources", headers=headers, data=data)
+                if resp.status_code in [200, 201]:
+                    return resp.json()
+        except Exception:
+            pass
+        out = self._exec_cmd(f"ha-manager add {sid} --max_restart {max_restart} --max_relocate {max_relocate} --state {state}")
+        return {"status": "success", "output": out}
+
+    # ----------------- NETWORK & SDN VPC -----------------
+    async def get_network_interfaces(self, node: str = "pve") -> List[Dict[str, Any]]:
+        headers = await self._get_headers()
+        try:
+            async with httpx.AsyncClient(verify=False, timeout=10.0) as client:
+                resp = await client.get(f"{self.base_url}/nodes/{node}/network", headers=headers)
+                if resp.status_code == 200:
+                    return resp.json().get("data", [])
+        except Exception:
+            pass
+        out = self._exec_cmd(f"pvesh get /nodes/{node}/network --output-format json 2>/dev/null")
+        try:
+            return json.loads(out)
+        except Exception:
+            return []
+
+    async def get_sdn_vnets(self, node: str = "pve") -> List[Dict[str, Any]]:
+        headers = await self._get_headers()
+        try:
+            async with httpx.AsyncClient(verify=False, timeout=10.0) as client:
+                resp = await client.get(f"{self.base_url}/cluster/sdn/vnets", headers=headers)
+                if resp.status_code == 200:
+                    return resp.json().get("data", [])
+        except Exception:
+            pass
+        out = self._exec_cmd("pvesh get /cluster/sdn/vnets --output-format json 2>/dev/null")
+        try:
+            return json.loads(out)
+        except Exception:
+            return []
+
+    # ----------------- TELEGRAM NOTIFICATIONS -----------------
+    async def send_telegram_notification(self, bot_token: str, chat_id: str, message: str) -> bool:
+        if not bot_token or not chat_id:
+            return False
+        url = f"https://api.telegram.org/bot{bot_token}/sendMessage"
+        payload = {
+            "chat_id": chat_id,
+            "text": message,
+            "parse_mode": "Markdown"
+        }
+        try:
+            async with httpx.AsyncClient(timeout=10.0) as client:
+                resp = await client.post(url, json=payload)
+                return resp.status_code == 200
+        except Exception:
+            return False
 
 proxmox_client = ProxmoxClient()

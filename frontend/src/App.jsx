@@ -13,6 +13,11 @@ import FirewallView from './components/FirewallView';
 import BackupSchedulerView from './components/BackupSchedulerView';
 import BillingMeteringView from './components/BillingMeteringView';
 import AICloudOpsView from './components/AICloudOpsView';
+import WebTerminalView from './components/WebTerminalView';
+import ClusterHAView from './components/ClusterHAView';
+import VPCNetworkView from './components/VPCNetworkView';
+import CommandPaletteModal from './components/CommandPaletteModal';
+import NotificationsSettingsModal from './components/NotificationsSettingsModal';
 import VNCConsoleModal from './components/VNCConsoleModal';
 import SnapshotModal from './components/SnapshotModal';
 import MigrateModal from './components/MigrateModal';
@@ -26,8 +31,11 @@ const TAB_TITLES = {
   lxc: 'LXC Micro-Containers',
   marketplace: '1-Click App Marketplace & Instant VM',
   firewall: 'SDN & Visual Cloud Firewall Hub',
+  vpc: 'VPC Subnets & Software-Defined Networking',
+  ha: 'High Availability (HA) & Self-Healing Watchdog',
   storage: 'Storage & Dedicated ISO Vault',
   backups: 'Auto-Backup & Disaster Recovery VZDump',
+  terminal: 'Node Web Terminal & Diagnostic Shell',
   billing: 'Resource Metering & Multi-Tenant Billing',
   'ai-ops': 'AI Cloud Architect & Autonomous Ops',
   users: 'Tenants & RBAC Quota Management',
@@ -41,6 +49,8 @@ export default function App() {
   const [consoleModal, setConsoleModal] = useState({ isOpen: false, vmid: null, vmName: '' });
   const [snapshotModal, setSnapshotModal] = useState({ isOpen: false, vmid: null, name: '', isLXC: false });
   const [migrateModal, setMigrateModal] = useState({ isOpen: false, item: null, isLXC: false });
+  const [searchModalOpen, setSearchModalOpen] = useState(false);
+  const [notificationsModalOpen, setNotificationsModalOpen] = useState(false);
 
   useEffect(() => {
     const handleAuthExpired = () => {
@@ -48,6 +58,18 @@ export default function App() {
     };
     window.addEventListener('toto:auth-expired', handleAuthExpired);
     return () => window.removeEventListener('toto:auth-expired', handleAuthExpired);
+  }, []);
+
+  // Keyboard shortcut listener: Cmd+K / Ctrl+K for Spotlight Search
+  useEffect(() => {
+    const handleKeyDown = (e) => {
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k') {
+        e.preventDefault();
+        setSearchModalOpen((prev) => !prev);
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
   }, []);
 
   const handleLogout = () => {
@@ -102,6 +124,8 @@ export default function App() {
           onOpenSidebar={() => setSidebarOpen(true)}
           activeTabTitle={TAB_TITLES[activeTab]}
           user={user}
+          onOpenSearch={() => setSearchModalOpen(true)}
+          onOpenNotifications={() => setNotificationsModalOpen(true)}
         />
 
         <main className="flex-1 p-4 sm:p-6 lg:p-8 max-w-[1600px] w-full mx-auto">
@@ -133,11 +157,20 @@ export default function App() {
             {activeTab === 'firewall' && (
               <FirewallView />
             )}
+            {activeTab === 'vpc' && (
+              <VPCNetworkView />
+            )}
+            {activeTab === 'ha' && (
+              <ClusterHAView />
+            )}
             {activeTab === 'storage' && (
               <StorageView />
             )}
             {activeTab === 'backups' && (
               <BackupSchedulerView />
+            )}
+            {activeTab === 'terminal' && (
+              <WebTerminalView />
             )}
             {activeTab === 'billing' && (
               <BillingMeteringView />
@@ -163,11 +196,24 @@ export default function App() {
               <span className="font-semibold text-slate-700">Enterprise Next-Gen Cloud Platform v3.0</span>
             </div>
             <div className="text-slate-600 font-semibold">
-              Proxmox VE 8.4 • Cloud-Init • SDN Firewall • ZSTD VZDump • KVM / LXC
+              Proxmox VE 8.4 • Corosync HA • SDN VPC • ZSTD VZDump • KVM / LXC
             </div>
           </div>
         </footer>
       </div>
+
+      {/* Global Spotlight Search Modal (Cmd+K) */}
+      <CommandPaletteModal
+        isOpen={searchModalOpen}
+        onClose={() => setSearchModalOpen(false)}
+        onNavigate={(tab) => setActiveTab(tab)}
+      />
+
+      {/* Telegram Alert & Notification Settings Modal */}
+      <NotificationsSettingsModal
+        isOpen={notificationsModalOpen}
+        onClose={() => setNotificationsModalOpen(false)}
+      />
 
       {/* Live VNC Console Modal */}
       {consoleModal.isOpen && (
