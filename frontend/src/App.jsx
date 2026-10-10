@@ -25,6 +25,11 @@ import SSHKeyringVaultView from './components/SSHKeyringVaultView';
 import S3StorageBucketsView from './components/S3StorageBucketsView';
 import AutoScalerPolicyView from './components/AutoScalerPolicyView';
 import SecurityAuditScannerView from './components/SecurityAuditScannerView';
+import DNSZoneManagerView from './components/DNSZoneManagerView';
+import CloudInitIaCHubView from './components/CloudInitIaCHubView';
+import DisasterRecoveryView from './components/DisasterRecoveryView';
+import GPUPassthroughView from './components/GPUPassthroughView';
+import AuditLogsView from './components/AuditLogsView';
 import CommandPaletteModal from './components/CommandPaletteModal';
 import NotificationsSettingsModal from './components/NotificationsSettingsModal';
 import VNCConsoleModal from './components/VNCConsoleModal';
@@ -40,7 +45,9 @@ const TAB_TITLES = {
   lxc: 'LXC Micro-Containers',
   docker: 'Docker Engine & Compose Stacks',
   k8s: 'Kubernetes K3s Micro-Cluster',
+  gpu: 'PCIe GPU Passthrough & AI Accelerators',
   marketplace: '1-Click App Marketplace & Instant VM',
+  dns: 'Anycast DNS & Global Zones Hub',
   proxy: 'Reverse Proxy & Auto-SSL Gateway',
   firewall: 'SDN & Visual Cloud Firewall Hub',
   vpc: 'VPC Subnets & Software-Defined Networking',
@@ -51,9 +58,12 @@ const TAB_TITLES = {
   buckets: 'S3 Object Storage Buckets',
   files: 'Cloud File Explorer & Config Editor',
   backups: 'Auto-Backup & Disaster Recovery VZDump',
+  dr: 'Disaster Recovery & ZFS Replication Sync',
+  iac: 'Infrastructure as Code (IaC) & Cloud-Init',
   autoscaler: 'Dynamic Auto-Scaler & Policy Engine',
   metrics: 'Real-Time Observability & Process Tree',
   terminal: 'Node Web Terminal & Diagnostic Shell',
+  audit: 'Compliance & Datacenter Audit Ledger',
   billing: 'Resource Metering & Multi-Tenant Billing',
   'ai-ops': 'AI Cloud Architect & Autonomous Ops',
   users: 'Tenants & RBAC Quota Management',
@@ -121,52 +131,56 @@ export default function App() {
   };
 
   if (!user) {
-    return <LoginView onLoginSuccess={(loggedInUser) => setUser(loggedInUser)} />;
+    return <LoginView onLoginSuccess={(userData) => setUser(userData)} />;
   }
 
   return (
-    <div className="min-h-screen bg-slate-50 flex flex-col font-sans text-slate-800 antialiased selection:bg-sky-500 selection:text-white">
-      {/* Responsive Left Navigation */}
-      <Sidebar 
-        activeTab={activeTab} 
-        setActiveTab={setActiveTab} 
-        user={user} 
+    <div className="flex h-screen bg-slate-100 text-slate-900 font-sans antialiased overflow-hidden">
+      {/* Dynamic Modern Sidebar */}
+      <Sidebar
+        activeTab={activeTab}
+        setActiveTab={setActiveTab}
+        user={user}
         onLogout={handleLogout}
         isOpen={sidebarOpen}
         onClose={() => setSidebarOpen(false)}
       />
 
-      {/* Main Content Layout */}
-      <div className="lg:pl-72 flex-1 flex flex-col min-w-0 transition-all duration-200">
-        <Header 
-          onOpenSidebar={() => setSidebarOpen(true)}
-          activeTabTitle={TAB_TITLES[activeTab]}
+      {/* Main Workspace Area */}
+      <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
+        <Header
           user={user}
+          onLogout={handleLogout}
+          onToggleSidebar={() => setSidebarOpen(!sidebarOpen)}
+          title={TAB_TITLES[activeTab] || 'Datacenter Console'}
           onOpenSearch={() => setSearchModalOpen(true)}
           onOpenNotifications={() => setNotificationsModalOpen(true)}
         />
 
-        <main className="flex-1 p-4 sm:p-6 lg:p-8 max-w-[1600px] w-full mx-auto">
-          <div className="animate-in fade-in duration-200">
+        {/* Dynamic Viewport Content */}
+        <main className="flex-1 overflow-y-auto p-4 sm:p-6 lg:p-8 bg-slate-50">
+          <div className="max-w-[1600px] mx-auto pb-12">
             {activeTab === 'overview' && (
-              <OverviewView onNavigate={setActiveTab} user={user} />
+              <OverviewView
+                onNavigate={(tab) => setActiveTab(tab)}
+                onOpenConsole={handleOpenConsole}
+              />
             )}
             {activeTab === 'cluster' && (
               <ClusterNodesView />
             )}
             {activeTab === 'vms' && (
-              <VMListView 
-                onOpenConsole={handleOpenConsole} 
-                onOpenSnapshots={handleOpenSnapshots}
-                onOpenMigrate={handleOpenMigrate}
-                user={user} 
+              <VMListView
+                onOpenConsole={handleOpenConsole}
+                onOpenSnapshots={(vmid, name) => handleOpenSnapshots(vmid, name, false)}
+                onOpenMigrate={(item) => handleOpenMigrate(item, false)}
               />
             )}
             {activeTab === 'lxc' && (
-              <LXCHubView 
+              <LXCHubView
                 onOpenConsole={handleOpenConsole}
-                onOpenSnapshots={handleOpenSnapshots}
-                onOpenMigrate={handleOpenMigrate}
+                onOpenSnapshots={(vmid, name) => handleOpenSnapshots(vmid, name, true)}
+                onOpenMigrate={(item) => handleOpenMigrate(item, true)}
               />
             )}
             {activeTab === 'docker' && (
@@ -175,8 +189,14 @@ export default function App() {
             {activeTab === 'k8s' && (
               <KubernetesClusterView />
             )}
+            {activeTab === 'gpu' && (
+              <GPUPassthroughView />
+            )}
             {activeTab === 'marketplace' && (
-              <MarketplaceView onDeployed={() => setActiveTab('vms')} />
+              <MarketplaceView onVMDeployed={() => setActiveTab('vms')} />
+            )}
+            {activeTab === 'dns' && (
+              <DNSZoneManagerView />
             )}
             {activeTab === 'proxy' && (
               <SSLProxyManagerView />
@@ -208,6 +228,12 @@ export default function App() {
             {activeTab === 'backups' && (
               <BackupSchedulerView />
             )}
+            {activeTab === 'dr' && (
+              <DisasterRecoveryView />
+            )}
+            {activeTab === 'iac' && (
+              <CloudInitIaCHubView />
+            )}
             {activeTab === 'autoscaler' && (
               <AutoScalerPolicyView />
             )}
@@ -216,6 +242,9 @@ export default function App() {
             )}
             {activeTab === 'terminal' && (
               <WebTerminalView />
+            )}
+            {activeTab === 'audit' && (
+              <AuditLogsView />
             )}
             {activeTab === 'billing' && (
               <BillingMeteringView />
@@ -241,7 +270,7 @@ export default function App() {
               <span className="font-semibold text-slate-700">Enterprise Next-Gen Cloud Platform v3.0</span>
             </div>
             <div className="text-slate-600 font-semibold">
-              Proxmox VE 8.4 • K3s Kubernetes • S3 Storage • Auto-Scaler • Let's Encrypt SSL
+              Proxmox VE 8.4 • K3s Kubernetes • S3 Storage • Auto-Scaler • Arc A770 GPU Passthrough • Anycast DNS
             </div>
           </div>
         </footer>

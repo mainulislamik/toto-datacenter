@@ -28,6 +28,9 @@ import {
   Key,
   TrendingUp,
   ShieldAlert,
+  Code,
+  RotateCcw,
+  FileText,
   X
 } from 'lucide-react';
 
@@ -48,10 +51,12 @@ export default function Sidebar({
     { id: 'lxc', label: 'LXC Micro-Containers', icon: Zap, badge: 'Sub-Sec' },
     { id: 'docker', label: 'Docker & Compose Stacks', icon: Layers, badge: 'Moby' },
     { id: 'k8s', label: 'Kubernetes K3s Micro-Cluster', icon: Boxes, badge: 'K3s' },
+    { id: 'gpu', label: 'GPU Passthrough & AI Accelerators', icon: Zap, badge: 'Arc-A770' },
     { id: 'marketplace', label: '1-Click App Store', icon: ShoppingBag, badge: '10s' },
   ];
 
   const networkSecurityItems = [
+    { id: 'dns', label: 'Anycast DNS & Zones', icon: Globe, badge: 'Cloudflare' },
     { id: 'proxy', label: 'Reverse Proxy & SSL', icon: Globe, badge: 'ACME' },
     { id: 'firewall', label: 'SDN & Cloud Firewall', icon: Shield, badge: 'Guard' },
     { id: 'vpc', label: 'VPC Subnets & Bridges', icon: Layers, badge: 'SDN' },
@@ -65,13 +70,16 @@ export default function Sidebar({
     { id: 'buckets', label: 'S3 Object Storage Buckets', icon: Database, badge: 'S3' },
     { id: 'files', label: 'Cloud File Explorer', icon: Folder, badge: '100GB' },
     { id: 'backups', label: 'Auto-Backup & VZDump', icon: Archive, badge: 'ZSTD' },
+    { id: 'dr', label: 'Disaster Recovery & ZFS Sync', icon: RotateCcw, badge: 'RPO 15m' },
     { id: 'gitops', label: '1-Click ISO & Git-Ops', icon: GitBranch },
   ];
 
   const opsBillingItems = [
+    { id: 'iac', label: 'Terraform & Cloud-Init IaC', icon: Code, badge: 'IaC' },
     { id: 'autoscaler', label: 'Dynamic Auto-Scaler', icon: TrendingUp, badge: 'Elastic' },
     { id: 'metrics', label: 'Observability & Metrics', icon: Activity, badge: '5s' },
     { id: 'terminal', label: 'Node Web Terminal', icon: Terminal, badge: 'CLI' },
+    { id: 'audit', label: 'Compliance & Audit Ledger', icon: FileText, badge: 'SOC2' },
     { id: 'billing', label: 'Metering & Multi-Tenant', icon: DollarSign, badge: 'PAYG' },
     { id: 'ai-ops', label: 'AI Cloud Architect', icon: Bot, badge: 'AI' },
     ...(isSuperAdmin ? [{ id: 'users', label: 'Tenants & RBAC Quotas', icon: Users, badge: 'Admin' }] : []),

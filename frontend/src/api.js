@@ -374,6 +374,25 @@ export const api = {
   // Security & Vulnerability Audit
   getSecurityAudit: () => request('/security/audit'),
   triggerSecurityScan: () => request('/security/scan-now', { method: 'POST' }),
+
+  // DNS Zones & Anycast Routing
+  getDNSZones: () => request('/dns/zones'),
+  createDNSRecord: (data) => request('/dns/records', { method: 'POST', body: data }),
+
+  // Terraform & Cloud-Init IaC Hub
+  getIaCTemplates: () => request('/iac/templates'),
+  generateTerraformHCL: (data) => request('/iac/terraform/generate', { method: 'POST', body: data }),
+
+  // Disaster Recovery & Storage Replication
+  getReplicationJobs: () => request('/replication/jobs'),
+  triggerReplicationSync: (jobId) => request('/replication/sync-now', { method: 'POST', body: { job_id: jobId } }),
+
+  // GPU & PCIe Hardware Passthrough
+  getHardwareGPUs: () => request('/hardware/gpus'),
+  assignGPUToVM: (data) => request('/hardware/gpus/assign', { method: 'POST', body: data }),
+
+  // Datacenter Audit Logs & Event Ledger
+  getAuditLogs: () => request('/audit/logs'),
 };
 
 export default api;
