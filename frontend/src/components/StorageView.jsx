@@ -117,10 +117,7 @@ export default function StorageView({ onSelectISOForVM }) {
     setError(null);
     setSuccessMsg('');
     try {
-      const formData = new FormData();
-      formData.append('file', selectedFile);
-      
-      const res = await api.uploadISOFile(formData, (percent, loaded, total) => {
+      const res = await api.uploadISOFile(selectedFile, (percent, loaded, total) => {
         setUploadProgress(percent);
         setUploadStats({
           loadedMB: (loaded / (1024 * 1024)).toFixed(1),

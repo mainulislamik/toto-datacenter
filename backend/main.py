@@ -3,7 +3,7 @@ import uuid
 import asyncio
 import subprocess
 from typing import List, Optional, Dict, Any
-from fastapi import FastAPI, Depends, HTTPException, status, Header, UploadFile, File, Form, Query
+from fastapi import FastAPI, Depends, HTTPException, status, Header, UploadFile, File, Form, Query, Request
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
@@ -709,6 +709,62 @@ async def delete_iso_image_query(
 @app.post("/api/storage/analyze-name")
 async def analyze_iso_filename(req: ISOAnalyzeNameRequest, current_user: Dict[str, Any] = Depends(get_current_user)):
     return analyze_iso(req.filename)
+
+@app.post("/api/storage/upload-stream")
+async def upload_iso_stream(
+    request: Request,
+    filename: Optional[str] = Query(None),
+    admin_user: Dict[str, Any] = Depends(require_admin)
+):
+    """Direct raw binary octet-stream ISO upload - handles 100MB to 50GB ISOs with zero multipart errors"""
+    if not filename:
+        filename = request.headers.get("x-filename") or f"iso-{uuid.uuid4().hex[:8]}.iso"
+    
+    filename = os.path.basename(filename)
+    if not (filename.endswith(".iso") or filename.endswith(".img")):
+        filename += ".iso"
+
+    staging_dir = "/home/imon/Extra_SSD/toto-iso-staging"
+    os.makedirs(staging_dir, exist_ok=True)
+    staging_path = os.path.join(staging_dir, filename)
+
+    header_bytes = b""
+    total_received = 0
+    with open(staging_path, "wb") as f_out:
+        async for chunk in request.stream():
+            if chunk:
+                if len(header_bytes) < 65536:
+                    needed = 65536 - len(header_bytes)
+                    header_bytes += chunk[:needed]
+                f_out.write(chunk)
+                total_received += len(chunk)
+
+    header_data = parse_iso_header_bytes(header_bytes)
+    analysis = analyze_iso(filename, header_info=header_data)
+
+    dest_path = f"/var/lib/vz/template/iso/{filename}"
+    scp_cmd = [
+        "sshpass", "-p", "ProxmoxAdmin2026!",
+        "scp", "-P", "2222",
+        "-o", "StrictHostKeyChecking=no",
+        staging_path,
+        f"root@127.0.0.1:{dest_path}"
+    ]
+    
+    scp_proc = subprocess.run(scp_cmd, capture_output=True, text=True, timeout=1200)
+    if scp_proc.returncode != 0:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to transfer ISO to Proxmox vault: {scp_proc.stderr or scp_proc.stdout}"
+        )
+
+    return {
+        "status": "success",
+        "filename": filename,
+        "volid": f"local:iso/{filename}",
+        "size_bytes": total_received,
+        "analysis": analysis
+    }
 
 @app.post("/api/storage/upload")
 async def upload_iso_file(

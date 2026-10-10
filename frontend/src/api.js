@@ -66,6 +66,47 @@ async function request(path, options = {}) {
   return res.json();
 }
 
+export function uploadISOStream(file, onProgress) {
+  return new Promise((resolve, reject) => {
+    const xhr = new XMLHttpRequest();
+    const encodedName = encodeURIComponent(file.name || 'os-image.iso');
+    xhr.open('POST', `${API_BASE}/storage/upload-stream?filename=${encodedName}`);
+    const token = getAuthToken();
+    if (token) {
+      xhr.setRequestHeader('Authorization', `Bearer ${token}`);
+    }
+    xhr.setRequestHeader('Content-Type', 'application/octet-stream');
+    xhr.setRequestHeader('X-Filename', file.name || 'os-image.iso');
+
+    xhr.upload.onprogress = (event) => {
+      if (event.lengthComputable && onProgress) {
+        const percent = Math.round((event.loaded / event.total) * 100);
+        onProgress(percent, event.loaded, event.total);
+      }
+    };
+
+    xhr.onload = () => {
+      if (xhr.status >= 200 && xhr.status < 300) {
+        try {
+          resolve(JSON.parse(xhr.responseText));
+        } catch (e) {
+          resolve({ status: 'success' });
+        }
+      } else {
+        try {
+          const err = JSON.parse(xhr.responseText);
+          reject(new Error(err.detail || 'Upload failed'));
+        } catch (e) {
+          reject(new Error(`Upload failed with status ${xhr.status}`));
+        }
+      }
+    };
+
+    xhr.onerror = () => reject(new Error('Network connection error during upload'));
+    xhr.send(file);
+  });
+}
+
 export function uploadISOFileWithProgress(formData, onProgress) {
   return new Promise((resolve, reject) => {
     const xhr = new XMLHttpRequest();
@@ -208,15 +249,19 @@ export const api = {
       method: 'POST',
       body: { url, filename },
     }),
-  uploadISOFile: (formData, onProgress) => {
+  uploadISOFile: (fileOrData, onProgress) => {
+    if (fileOrData instanceof File) {
+      return uploadISOStream(fileOrData, onProgress);
+    }
     if (onProgress) {
-      return uploadISOFileWithProgress(formData, onProgress);
+      return uploadISOFileWithProgress(fileOrData, onProgress);
     }
     return request('/storage/upload', {
       method: 'POST',
-      body: formData,
+      body: fileOrData,
     });
   },
+  uploadISOStream,
   uploadISOFileWithProgress,
   addNFSStorage: (data) =>
     request('/storage/nfs', {
