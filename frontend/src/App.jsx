@@ -42,6 +42,11 @@ import ZeroTrustBastionView from './components/ZeroTrustBastionView';
 import FinOpsCostAnalyticsView from './components/FinOpsCostAnalyticsView';
 import IPAMManagerView from './components/IPAMManagerView';
 import AIIncidentResponderView from './components/AIIncidentResponderView';
+import BareMetalPXEView from './components/BareMetalPXEView';
+import MagicTransitScrubberView from './components/MagicTransitScrubberView';
+import DarkFiberDWDMView from './components/DarkFiberDWDMView';
+import EnterpriseKMSView from './components/EnterpriseKMSView';
+import EdgeWasmFunctionsView from './components/EdgeWasmFunctionsView';
 import CommandPaletteModal from './components/CommandPaletteModal';
 import NotificationsSettingsModal from './components/NotificationsSettingsModal';
 import VNCConsoleModal from './components/VNCConsoleModal';
@@ -64,6 +69,11 @@ const TAB_TITLES = {
   'vps-domains': 'VPS Custom Domain & vHost Engine',
   'serverless-paas': 'Serverless Apps & PaaS Platform',
   'zero-trust': 'Zero-Trust IAM VPN & SSH Bastion',
+  'edge-wasm': 'Global Edge WASM Functions',
+  'bare-metal': 'Bare-Metal Provisioning & PXE Boot',
+  'magic-transit': 'Magic Transit & BGP Scrubbing',
+  'dark-fiber': 'Dark Fiber DWDM Optical Ring',
+  kms: 'FIPS 140-2 KMS Hardware Security Module',
   ipam: 'Enterprise IPAM & Elastic Public IPs',
   incident: 'AI Incident Responder & PagerDuty',
   finops: 'FinOps & Infrastructure Cost Optimizer',
@@ -315,6 +325,21 @@ export default function App() {
             )}
             {activeTab === 'incident' && (
               <AIIncidentResponderView />
+            )}
+            {activeTab === 'bare-metal' && (
+              <BareMetalPXEView />
+            )}
+            {activeTab === 'magic-transit' && (
+              <MagicTransitScrubberView />
+            )}
+            {activeTab === 'dark-fiber' && (
+              <DarkFiberDWDMView />
+            )}
+            {activeTab === 'kms' && (
+              <EnterpriseKMSView />
+            )}
+            {activeTab === 'edge-wasm' && (
+              <EdgeWasmFunctionsView />
             )}
           </div>
         </main>

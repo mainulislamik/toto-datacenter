@@ -446,6 +446,13 @@ export const api = {
 
   // AI Incident Responder & PagerDuty
   getIncidents: () => request('/incidents'),
+
+  // God-Tier Enterprise Features
+  getBareMetalPXE: () => request('/hardware/bare-metal'),
+  getMagicTransit: () => request('/network/magic-transit'),
+  getDarkFiber: () => request('/network/dark-fiber'),
+  getEnterpriseKMS: () => request('/security/kms'),
+  getEdgeWasm: () => request('/paas/edge-wasm'),
 };
 
 export default api;

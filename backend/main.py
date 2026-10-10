@@ -2133,6 +2133,56 @@ async def get_incidents(current_user: Dict[str, Any] = Depends(get_current_user)
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
+# ----------------- BARE-METAL PROVISIONING -----------------
+
+@app.get("/api/hardware/bare-metal")
+async def get_bare_metal_pxe(current_user: Dict[str, Any] = Depends(get_current_user)):
+    try:
+        data = await proxmox_client.get_bare_metal_pxe_status()
+        return {"status": "success", **data}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+# ----------------- MAGIC TRANSIT SCRUBBER -----------------
+
+@app.get("/api/network/magic-transit")
+async def get_magic_transit(current_user: Dict[str, Any] = Depends(get_current_user)):
+    try:
+        data = await proxmox_client.get_magic_transit_scrubbing()
+        return {"status": "success", **data}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+# ----------------- DARK FIBER DWDM -----------------
+
+@app.get("/api/network/dark-fiber")
+async def get_dark_fiber(current_user: Dict[str, Any] = Depends(get_current_user)):
+    try:
+        data = await proxmox_client.get_dark_fiber_dwdm_telemetry()
+        return {"status": "success", **data}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+# ----------------- ENTERPRISE KMS -----------------
+
+@app.get("/api/security/kms")
+async def get_enterprise_kms(current_user: Dict[str, Any] = Depends(get_current_user)):
+    try:
+        data = await proxmox_client.get_enterprise_kms_hsm()
+        return {"status": "success", **data}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+# ----------------- EDGE WASM FUNCTIONS -----------------
+
+@app.get("/api/paas/edge-wasm")
+async def get_edge_wasm(current_user: Dict[str, Any] = Depends(get_current_user)):
+    try:
+        data = await proxmox_client.get_edge_wasm_functions()
+        return {"status": "success", **data}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
 # ----------------- SYSTEM STATUS & HEALTH -----------------
 
 @app.get("/api/health")

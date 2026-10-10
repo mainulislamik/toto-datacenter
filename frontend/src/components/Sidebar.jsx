@@ -56,6 +56,7 @@ export default function Sidebar({
     { id: 'overview', label: 'Datacenter Overview', icon: Activity, badge: 'Live' },
     { id: 'architecture', label: 'Datacenter Architecture', icon: Layers, badge: 'Tier-III' },
     { id: 'topology', label: 'Multi-Region Mesh Topology', icon: Network, badge: 'WireGuard' },
+    { id: 'bare-metal', label: 'Bare-Metal & PXE Boot', icon: HardDrive, badge: 'MaaS' },
     { id: 'cluster', label: 'Cluster Nodes & Scale-Out', icon: Cpu, badge: 'Nodes' },
     { id: 'vms', label: 'KVM Virtual Machines', icon: Server, badge: 'KVM' },
     { id: 'lxc', label: 'LXC Micro-Containers', icon: Zap, badge: 'Sub-Sec' },
@@ -67,6 +68,9 @@ export default function Sidebar({
 
   const networkSecurityItems = [
     { id: 'vps-domains', label: 'VPS Custom Domains & vHost', icon: Globe, badge: 'vHost' },
+    { id: 'magic-transit', label: 'Magic Transit & Scrubbing', icon: ShieldAlert, badge: 'Anti-DDoS' },
+    { id: 'dark-fiber', label: 'Dark Fiber & DWDM Ring', icon: Radio, badge: 'Optical' },
+    { id: 'kms', label: 'Hardware KMS Vault', icon: Key, badge: 'FIPS' },
     { id: 'waf', label: 'DDoS & WAF Security Shield', icon: ShieldAlert, badge: 'Shield' },
     { id: 'lb', label: 'L4/L7 Load Balancers', icon: GitFork, badge: 'Ingress' },
     { id: 'dns', label: 'Anycast DNS & Zones', icon: Globe, badge: 'Cloudflare' },
@@ -89,6 +93,7 @@ export default function Sidebar({
   ];
 
   const opsBillingItems = [
+    { id: 'edge-wasm', label: 'Global Edge WASM Functions', icon: Code, badge: 'V8' },
     { id: 'serverless-paas', label: 'Serverless App Platform', icon: Box, badge: 'PaaS' },
     { id: 'iac', label: 'Terraform & Cloud-Init IaC', icon: Code, badge: 'IaC' },
     { id: 'zero-trust', label: 'Zero-Trust IAM Bastion', icon: Lock, badge: 'MFA' },

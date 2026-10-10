@@ -1793,6 +1793,66 @@ server {{
             }
         ]
 
+    # ----------------- BARE-METAL PROVISIONING & PXE BOOT -----------------
+    async def get_bare_metal_pxe_status(self) -> Dict[str, Any]:
+        return {
+            "pxe_server": "10.0.99.10 (MaaS Active)",
+            "discovered_nodes": [
+                {"mac": "a4:bf:01:2c:f7:19", "vendor": "Supermicro", "status": "Ready for Deploy", "ipmi_ip": "10.0.99.101", "cpu": "2x Xeon Gold 6248R", "ram": "256GB"},
+                {"mac": "a4:bf:01:2c:f7:2a", "vendor": "Dell PowerEdge R740", "status": "Installing Proxmox VE 8", "ipmi_ip": "10.0.99.102", "cpu": "2x EPYC 7742", "ram": "512GB"}
+            ],
+            "os_images": ["Ubuntu 24.04 LTS (autoinstall)", "Proxmox VE 8.4 (ZFS RAID1)", "Debian 12 Bookworm", "TrueNAS SCALE 24.04"]
+        }
+
+    # ----------------- CLOUDFLARE MAGIC TRANSIT & BGP SCRUBBER -----------------
+    async def get_magic_transit_scrubbing(self) -> Dict[str, Any]:
+        return {
+            "status": "Scrubbing Active",
+            "gre_tunnels": [
+                {"tunnel_ip": "192.168.254.1", "endpoint": "Cloudflare FRA (Frankfurt)", "status": "UP", "latency": "118ms"},
+                {"tunnel_ip": "192.168.254.2", "endpoint": "Cloudflare SIN (Singapore)", "status": "UP", "latency": "44ms"}
+            ],
+            "metrics": {
+                "clean_traffic_in": "1.2 Gbps",
+                "attack_traffic_dropped": "48.5 Gbps (TCP SYN Flood)",
+                "bgp_flowspec_rules": 24
+            }
+        }
+
+    # ----------------- DARK FIBER & DWDM OPTICAL NETWORK -----------------
+    async def get_dark_fiber_dwdm_telemetry(self) -> Dict[str, Any]:
+        return {
+            "dwdm_ring_status": "Closed Ring (Protected)",
+            "transceivers": [
+                {"port": "QSFP28-1/1/1", "speed": "100GbE", "link": "Up", "tx_power_dbm": 2.14, "rx_power_dbm": -4.21, "temp_c": 38.4, "vendor": "FS.com"},
+                {"port": "QSFP28-1/1/2", "speed": "100GbE", "link": "Up", "tx_power_dbm": 1.98, "rx_power_dbm": -4.85, "temp_c": 39.1, "vendor": "Cisco"}
+            ],
+            "lambda_channels": [
+                {"channel": 21, "wavelength": "1560.61 nm", "status": "Active (To Secondary DC)"},
+                {"channel": 22, "wavelength": "1559.79 nm", "status": "Spare"}
+            ]
+        }
+
+    # ----------------- ENTERPRISE KMS & HARDWARE SECURITY MODULE -----------------
+    async def get_enterprise_kms_hsm(self) -> Dict[str, Any]:
+        return {
+            "hsm_status": "FIPS 140-2 Level 3 Active",
+            "master_key_rotation": "Every 90 Days",
+            "keys": [
+                {"key_id": "cmk-zfs-pool-01", "usage": "ZFS Native Encryption", "algorithm": "AES-256-GCM", "status": "In Use"},
+                {"key_id": "cmk-s3-vault-02", "usage": "S3 Bucket SSE-KMS", "algorithm": "AES-256-GCM", "status": "In Use"}
+            ]
+        }
+
+    # ----------------- EDGE WASM & SERVERLESS FUNCTIONS -----------------
+    async def get_edge_wasm_functions(self) -> Dict[str, Any]:
+        return {
+            "engine": "V8 Isolate Edge Runtime",
+            "cold_start": "~0.8ms",
+            "functions": [
+                {"id": "fn-geo-router", "name": "Geo-IP Traffic Router", "language": "Rust (WASM)", "invocations_24h": 1420500, "status": "Deployed (Global Edge)"},
+                {"id": "fn-jwt-auth", "name": "JWT Auth Interceptor", "language": "JavaScript (V8)", "invocations_24h": 89400, "status": "Deployed (Datacenter Ingress)"}
+            ]
+        }
+
 proxmox_client = ProxmoxClient()
-
-
