@@ -288,4 +288,23 @@ export const api = {
   // Users & Multi-Tenancy (Super Admin)
   getUsers: () => request('/auth/users'),
   getAuthMe: () => request('/auth/me'),
+
+  // Firewall & Security Hub
+  getFirewallRules: () => request('/firewall/rules'),
+  addFirewallRule: (rule) => request('/firewall/rules', { method: 'POST', body: rule }),
+  deleteFirewallRule: (pos) => request(`/firewall/rules/${pos}`, { method: 'DELETE' }),
+  applyFirewallProfile: (profile) => request('/firewall/apply-profile', { method: 'POST', body: { profile } }),
+
+  // Backup & Disaster Recovery
+  getBackups: (node = 'pve') => request(`/backups/list?node=${node}`),
+  createBackupNow: (data) => request('/backups/create-now', { method: 'POST', body: data }),
+  restoreBackup: (data) => request('/backups/restore', { method: 'POST', body: data }),
+
+  // Billing & Usage Metering
+  getBillingUsage: () => request('/billing/usage'),
+
+  // AI Cloud Ops
+  executeAIOps: (prompt) => request('/ai/execute-ops', { method: 'POST', body: { prompt } }),
 };
+
+export default api;

@@ -9,6 +9,10 @@ import MarketplaceView from './components/MarketplaceView';
 import UserManagementView from './components/UserManagementView';
 import StorageView from './components/StorageView';
 import GitOpsView from './components/GitOpsView';
+import FirewallView from './components/FirewallView';
+import BackupSchedulerView from './components/BackupSchedulerView';
+import BillingMeteringView from './components/BillingMeteringView';
+import AICloudOpsView from './components/AICloudOpsView';
 import VNCConsoleModal from './components/VNCConsoleModal';
 import SnapshotModal from './components/SnapshotModal';
 import MigrateModal from './components/MigrateModal';
@@ -20,8 +24,12 @@ const TAB_TITLES = {
   cluster: 'Physical Cluster Nodes & Scale-Out',
   vms: 'KVM Virtual Machines',
   lxc: 'LXC Micro-Containers',
-  marketplace: '1-Click App Marketplace',
-  storage: 'Storage & ISO Vault',
+  marketplace: '1-Click App Marketplace & Instant VM',
+  firewall: 'SDN & Visual Cloud Firewall Hub',
+  storage: 'Storage & Dedicated ISO Vault',
+  backups: 'Auto-Backup & Disaster Recovery VZDump',
+  billing: 'Resource Metering & Multi-Tenant Billing',
+  'ai-ops': 'AI Cloud Architect & Autonomous Ops',
   users: 'Tenants & RBAC Quota Management',
   gitops: '1-Click ISO Builder & GitOps'
 };
@@ -46,11 +54,6 @@ export default function App() {
     setAuthToken(null);
     setCurrentUser(null);
     setUser(null);
-  };
-
-  const handleLoginSuccess = (loggedInUser) => {
-    setUser(loggedInUser);
-    setActiveTab('overview');
   };
 
   const handleOpenConsole = (vmid, vmName) => {
@@ -78,24 +81,24 @@ export default function App() {
   };
 
   if (!user) {
-    return <LoginView onLoginSuccess={handleLoginSuccess} />;
+    return <LoginView onLoginSuccess={(loggedInUser) => setUser(loggedInUser)} />;
   }
 
   return (
-    <div className="min-h-screen bg-slate-100/70 font-sans flex text-slate-900 selection:bg-sky-500 selection:text-white">
-      {/* Modern Fixed Sidebar */}
-      <Sidebar
-        activeTab={activeTab}
-        setActiveTab={setActiveTab}
-        user={user}
+    <div className="min-h-screen bg-slate-50 flex flex-col font-sans text-slate-800 antialiased selection:bg-sky-500 selection:text-white">
+      {/* Responsive Left Navigation */}
+      <Sidebar 
+        activeTab={activeTab} 
+        setActiveTab={setActiveTab} 
+        user={user} 
         onLogout={handleLogout}
         isOpen={sidebarOpen}
         onClose={() => setSidebarOpen(false)}
       />
 
-      {/* Main Workspace (Offset for Sidebar on Large Screens) */}
-      <div className="flex-1 flex flex-col min-w-0 lg:pl-72 transition-all duration-200">
-        <Header
+      {/* Main Content Layout */}
+      <div className="lg:pl-72 flex-1 flex flex-col min-w-0 transition-all duration-200">
+        <Header 
           onOpenSidebar={() => setSidebarOpen(true)}
           activeTabTitle={TAB_TITLES[activeTab]}
           user={user}
@@ -125,11 +128,29 @@ export default function App() {
               />
             )}
             {activeTab === 'marketplace' && (
-              <MarketplaceView onDeployed={() => setActiveTab('lxc')} />
+              <MarketplaceView onDeployed={() => setActiveTab('vms')} />
             )}
-            {activeTab === 'storage' && <StorageView />}
-            {activeTab === 'users' && <UserManagementView currentUser={user} />}
-            {activeTab === 'gitops' && <GitOpsView />}
+            {activeTab === 'firewall' && (
+              <FirewallView />
+            )}
+            {activeTab === 'storage' && (
+              <StorageView />
+            )}
+            {activeTab === 'backups' && (
+              <BackupSchedulerView />
+            )}
+            {activeTab === 'billing' && (
+              <BillingMeteringView />
+            )}
+            {activeTab === 'ai-ops' && (
+              <AICloudOpsView />
+            )}
+            {activeTab === 'users' && (
+              <UserManagementView currentUser={user} />
+            )}
+            {activeTab === 'gitops' && (
+              <GitOpsView />
+            )}
           </div>
         </main>
 
@@ -139,10 +160,10 @@ export default function App() {
             <div className="flex items-center space-x-2">
               <span className="font-black text-slate-900">TOTO CLOUD OS</span>
               <span>•</span>
-              <span className="font-semibold text-slate-700">Enterprise Multi-Node Datacenter v2.5</span>
+              <span className="font-semibold text-slate-700">Enterprise Next-Gen Cloud Platform v3.0</span>
             </div>
             <div className="text-slate-600 font-semibold">
-              Proxmox VE 8.4 • Corosync VoteQuorum • KVM & LXC Containerization
+              Proxmox VE 8.4 • Cloud-Init • SDN Firewall • ZSTD VZDump • KVM / LXC
             </div>
           </div>
         </footer>

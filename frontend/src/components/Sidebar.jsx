@@ -17,6 +17,10 @@ import {
   Sliders,
   Database,
   Radio,
+  Archive,
+  DollarSign,
+  Bot,
+  Shield,
   X
 } from 'lucide-react';
 
@@ -35,23 +39,30 @@ export default function Sidebar({
     { id: 'cluster', label: 'Cluster Nodes & Scale-Out', icon: Cpu, badge: 'Nodes' },
     { id: 'vms', label: 'KVM Virtual Machines', icon: Server, badge: 'KVM' },
     { id: 'lxc', label: 'LXC Micro-Containers', icon: Zap, badge: 'Sub-Sec' },
-    { id: 'marketplace', label: '1-Click App Store', icon: ShoppingBag, badge: 'New' },
+    { id: 'marketplace', label: '1-Click App Store', icon: ShoppingBag, badge: '10s' },
   ];
 
-  const infraItems = [
+  const networkSecurityItems = [
+    { id: 'firewall', label: 'SDN & Cloud Firewall', icon: Shield, badge: 'Guard' },
+  ];
+
+  const storageBackupItems = [
     { id: 'storage', label: 'Storage & ISO Vault', icon: HardDrive },
+    { id: 'backups', label: 'Auto-Backup & VZDump', icon: Archive, badge: 'ZSTD' },
     { id: 'gitops', label: '1-Click ISO & Git-Ops', icon: GitBranch },
   ];
 
-  const adminItems = [
+  const opsBillingItems = [
+    { id: 'billing', label: 'Metering & Multi-Tenant', icon: DollarSign, badge: 'PAYG' },
+    { id: 'ai-ops', label: 'AI Cloud Architect', icon: Bot, badge: 'AI' },
     ...(isSuperAdmin ? [{ id: 'users', label: 'Tenants & RBAC Quotas', icon: Users, badge: 'Admin' }] : []),
   ];
 
   const renderNavGroup = (title, items) => {
     if (!items || items.length === 0) return null;
     return (
-      <div className="mb-6">
-        <div className="px-3 mb-2 text-[11px] font-black uppercase tracking-wider text-slate-600">
+      <div className="mb-5">
+        <div className="px-3 mb-2 text-[11px] font-black uppercase tracking-wider text-slate-500">
           {title}
         </div>
         <div className="space-y-1">
@@ -65,7 +76,7 @@ export default function Sidebar({
                   setActiveTab(item.id);
                   if (onClose) onClose();
                 }}
-                className={`w-full group flex items-center justify-between px-3 py-2.5 rounded-xl text-xs font-bold transition-all duration-150 ${
+                className={`w-full group flex items-center justify-between px-3 py-2 rounded-xl text-xs font-bold transition-all duration-150 ${
                   isActive
                     ? 'bg-slate-900 text-white shadow-md shadow-slate-900/10 translate-x-0.5'
                     : 'text-slate-700 hover:text-slate-950 hover:bg-slate-100/90'
@@ -82,7 +93,7 @@ export default function Sidebar({
                   <span className="font-bold tracking-tight">{item.label}</span>
                 </div>
                 {item.badge && (
-                  <span className={`text-[10px] font-black px-2 py-0.5 rounded-md uppercase tracking-wider ${
+                  <span className={`text-[9px] font-black px-1.5 py-0.5 rounded uppercase tracking-wider ${
                     isActive 
                       ? 'bg-sky-400/20 text-sky-300 border border-sky-400/30' 
                       : 'bg-slate-100 text-slate-600 border border-slate-200 group-hover:bg-slate-200'
@@ -114,7 +125,7 @@ export default function Sidebar({
         lg:translate-x-0 ${isOpen ? 'translate-x-0' : '-translate-x-full'}
       `}>
         {/* Brand Header */}
-        <div className="h-18 px-5 border-b border-slate-200 flex items-center justify-between">
+        <div className="h-16 px-5 border-b border-slate-200 flex items-center justify-between">
           <div 
             className="flex items-center space-x-3 cursor-pointer select-none" 
             onClick={() => {
@@ -122,75 +133,54 @@ export default function Sidebar({
               if (onClose) onClose();
             }}
           >
-            <div className="w-10 h-10 rounded-xl bg-slate-950 text-white flex items-center justify-center shadow-lg shadow-slate-950/15 border border-slate-800">
-              <Server className="w-5 h-5 text-sky-400" />
+            <div className="w-9 h-9 bg-slate-900 rounded-xl flex items-center justify-center text-white shadow-xs border border-slate-800">
+              <Layers className="w-5 h-5 text-sky-400" />
             </div>
             <div>
               <div className="flex items-center space-x-1.5">
-                <span className="font-black text-sm text-slate-900 tracking-tight">TOTO CLOUD</span>
-                <span className="text-[9px] font-black uppercase tracking-wider px-1.5 py-0.2 bg-sky-100 text-sky-800 rounded border border-sky-200">
-                  v2.5
+                <span className="font-black text-slate-950 text-base tracking-tight font-mono">TOTO CLOUD</span>
+                <span className="text-[10px] font-black uppercase tracking-widest px-1.5 py-0.5 rounded-sm bg-sky-50 text-sky-700 border border-sky-200">
+                  v3.0
                 </span>
               </div>
-              <div className="text-[11px] font-bold text-slate-600 tracking-tight">
-                Enterprise Datacenter
-              </div>
+              <p className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">
+                Enterprise Hypervisor
+              </p>
             </div>
           </div>
-
+          
           <button 
             onClick={onClose}
-            className="lg:hidden p-1.5 rounded-lg text-slate-400 hover:text-slate-600 hover:bg-slate-100"
+            className="p-1.5 text-slate-400 hover:text-slate-600 rounded-lg lg:hidden"
           >
             <X className="w-5 h-5" />
           </button>
         </div>
 
-        {/* Live Cluster Pill */}
-        <div className="px-4 py-3 border-b border-slate-100 bg-slate-50/70">
-          <div className="p-2.5 rounded-xl bg-white border border-slate-200/80 shadow-2xs flex items-center justify-between">
-            <div className="flex items-center space-x-2.5">
-              <span className="relative flex h-2.5 w-2.5">
-                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
-                <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-emerald-500"></span>
-              </span>
-              <div>
-                <div className="text-[11px] font-black text-slate-800 uppercase tracking-wider">Cluster toto-dc</div>
-                <div className="text-[10px] font-bold text-slate-600">Corosync VoteQuorum OK</div>
-              </div>
-            </div>
-            <a 
-              href="https://127.0.0.1:8006" 
-              target="_blank" 
-              rel="noreferrer"
-              title="Open Proxmox Native Shell"
-              className="p-1 rounded-md text-slate-400 hover:text-sky-600 hover:bg-sky-50 transition"
-            >
-              <ExternalLink className="w-3.5 h-3.5" />
-            </a>
-          </div>
+        {/* Scrollable Navigation */}
+        <div className="flex-1 overflow-y-auto px-4 py-4 space-y-1 select-none custom-scrollbar">
+          {renderNavGroup('Compute & Virtualization', computeItems)}
+          {renderNavGroup('Network & Security', networkSecurityItems)}
+          {renderNavGroup('Storage & Disaster Recovery', storageBackupItems)}
+          {renderNavGroup('Operations & Multi-Tenancy', opsBillingItems)}
         </div>
 
-        {/* Nav Items List */}
-        <div className="flex-1 overflow-y-auto px-4 py-4 space-y-1">
-          {renderNavGroup('Compute & Cloud Engine', computeItems)}
-          {renderNavGroup('Storage & Automation', infraItems)}
-          {renderNavGroup('Administration & Access', adminItems)}
-        </div>
-
-        {/* User Card & Logout */}
-        <div className="p-4 border-t border-slate-200 bg-slate-50/50">
-          <div className="flex items-center justify-between p-2 rounded-xl bg-white border border-slate-200 shadow-2xs">
-            <div className="flex items-center space-x-3 overflow-hidden">
-              <div className="w-9 h-9 shrink-0 rounded-lg bg-slate-900 text-sky-400 flex items-center justify-center font-black text-xs shadow-inner">
-                {isSuperAdmin ? <ShieldCheck className="w-5 h-5 text-sky-400" /> : <UserIcon className="w-4 h-4 text-white" />}
+        {/* User Footer */}
+        <div className="p-3 border-t border-slate-200 bg-slate-50/50">
+          <div className="p-2.5 rounded-xl border border-slate-200/80 bg-white flex items-center justify-between shadow-xs">
+            <div className="flex items-center space-x-2.5 overflow-hidden">
+              <div className="w-8 h-8 rounded-lg bg-sky-50 border border-sky-200 flex items-center justify-center text-sky-700 shrink-0 font-bold font-mono text-xs">
+                {user?.username ? user.username.substring(0, 2).toUpperCase() : 'IM'}
               </div>
               <div className="overflow-hidden">
-                <div className="text-xs font-black text-slate-900 truncate">
-                  {user?.username}
-                </div>
-                <div className="text-[10px] font-bold text-slate-600 uppercase tracking-wider truncate">
-                  {isSuperAdmin ? 'Super Administrator' : user?.company || 'Tenant User'}
+                <p className="text-xs font-bold text-slate-900 truncate">
+                  {user?.username || 'Imon Khan'}
+                </p>
+                <div className="flex items-center space-x-1">
+                  <span className={`w-1.5 h-1.5 rounded-full ${isSuperAdmin ? 'bg-indigo-500' : 'bg-emerald-500'}`} />
+                  <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">
+                    {user?.role || 'Super Admin'}
+                  </span>
                 </div>
               </div>
             </div>
@@ -198,7 +188,7 @@ export default function Sidebar({
             <button
               onClick={onLogout}
               title="Sign Out"
-              className="p-2 rounded-lg text-slate-600 hover:text-rose-600 hover:bg-rose-50 border border-transparent hover:border-rose-200 transition"
+              className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-colors shrink-0"
             >
               <LogOut className="w-4 h-4" />
             </button>

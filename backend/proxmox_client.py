@@ -563,4 +563,92 @@ class ProxmoxClient:
         self._exec_cmd(cmd)
         return True
 
+    # ----------------- CLUSTER FIREWALL & SECURITY -----------------
+    async def get_cluster_firewall_rules(self) -> List[Dict[str, Any]]:
+        headers = await self._get_headers()
+        try:
+            async with httpx.AsyncClient(verify=False, timeout=10.0) as client:
+                resp = await client.get(f"{self.base_url}/cluster/firewall/rules", headers=headers)
+                if resp.status_code == 200:
+                    return resp.json().get("data", [])
+        except Exception:
+            pass
+        out = self._exec_cmd("pvesh get /cluster/firewall/rules --output-format json 2>/dev/null")
+        try:
+            return json.loads(out)
+        except Exception:
+            return []
+
+    async def add_cluster_firewall_rule(self, rule: Dict[str, Any]) -> Dict[str, Any]:
+        headers = await self._get_headers()
+        try:
+            async with httpx.AsyncClient(verify=False, timeout=10.0) as client:
+                resp = await client.post(f"{self.base_url}/cluster/firewall/rules", headers=headers, data=rule)
+                if resp.status_code in [200, 201, 202]:
+                    return resp.json()
+        except Exception:
+            pass
+        # CLI fallback
+        args = " ".join([f"--{k} '{v}'" for k, v in rule.items() if v is not None])
+        self._exec_cmd(f"pvesh create /cluster/firewall/rules {args}")
+        return {"status": "success"}
+
+    async def delete_cluster_firewall_rule(self, pos: int) -> bool:
+        headers = await self._get_headers()
+        try:
+            async with httpx.AsyncClient(verify=False, timeout=10.0) as client:
+                resp = await client.delete(f"{self.base_url}/cluster/firewall/rules/{pos}", headers=headers)
+                if resp.status_code in [200, 202]:
+                    return True
+        except Exception:
+            pass
+        self._exec_cmd(f"pvesh delete /cluster/firewall/rules/{pos}")
+        return True
+
+    # ----------------- BACKUPS & VZDUMP SCHEDULER -----------------
+    async def get_backups(self, node: str = "pve", storage: str = "extra-ssd") -> List[Dict[str, Any]]:
+        all_backups = []
+        headers = await self._get_headers()
+        for st in [storage, "local"]:
+            try:
+                async with httpx.AsyncClient(verify=False, timeout=10.0) as client:
+                    resp = await client.get(f"{self.base_url}/nodes/{node}/storage/{st}/content?content=backup", headers=headers)
+                    if resp.status_code == 200:
+                        items = resp.json().get("data", [])
+                        for item in items:
+                            item["storage"] = st
+                            all_backups.append(item)
+            except Exception:
+                out = self._exec_cmd(f"pvesh get /nodes/{node}/storage/{st}/content?content=backup --output-format json 2>/dev/null")
+                try:
+                    items = json.loads(out)
+                    for item in items:
+                        item["storage"] = st
+                        all_backups.append(item)
+                except Exception:
+                    pass
+        return all_backups
+
+    async def create_backup(self, vmid: int, storage: str = "extra-ssd", mode: str = "snapshot", compress: str = "zstd", node: str = "pve") -> Dict[str, Any]:
+        headers = await self._get_headers()
+        data = {
+            "vmid": vmid,
+            "storage": storage,
+            "mode": mode,
+            "compress": compress
+        }
+        try:
+            async with httpx.AsyncClient(verify=False, timeout=30.0) as client:
+                resp = await client.post(f"{self.base_url}/nodes/{node}/vzdump", headers=headers, data=data)
+                if resp.status_code in [200, 202]:
+                    return resp.json()
+        except Exception:
+            pass
+        out = self._exec_cmd(f"vzdump {vmid} --storage {storage} --mode {mode} --compress {compress}")
+        return {"status": "success", "output": out}
+
+    async def restore_backup(self, volid: str, vmid: int, node: str = "pve") -> Dict[str, Any]:
+        out = self._exec_cmd(f"qmrestore {volid} {vmid} --force 1 2>&1 || pct restore {vmid} {volid} --force 1")
+        return {"status": "success", "output": out}
+
 proxmox_client = ProxmoxClient()
