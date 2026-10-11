@@ -56,6 +56,7 @@ class Token(BaseModel):
     role: str
     username: str
     user_id: str
+    user: Optional[Dict[str, Any]] = None
 
 def hash_password(password: str) -> str:
     pwd_bytes = password.encode('utf-8')

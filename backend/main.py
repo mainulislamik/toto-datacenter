@@ -126,12 +126,20 @@ async def login(req: LoginRequest):
             headers={"WWW-Authenticate": "Bearer"},
         )
     token = create_access_token(user)
+    user_payload = {
+        "id": user.get("id", "usr-unknown"),
+        "username": user.get("username", req.username),
+        "role": user.get("role", "user"),
+        "company": user.get("company", "Client"),
+        "quota": user.get("quota", {})
+    }
     return Token(
         access_token=token,
         token_type="bearer",
         role=user.get("role", "user"),
         username=user.get("username", req.username),
-        user_id=user.get("id", "usr-unknown")
+        user_id=user.get("id", "usr-unknown"),
+        user=user_payload
     )
 
 @app.get("/api/auth/me")

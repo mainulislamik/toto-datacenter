@@ -14,9 +14,15 @@ export default function LoginView({ onLoginSuccess }) {
     setError(null);
     try {
       const data = await api.login(username, password);
+      const userObj = data.user || {
+        id: data.user_id,
+        username: data.username,
+        role: data.role,
+        company: data.company || 'Toto Company Datacenter'
+      };
       setAuthToken(data.access_token);
-      setCurrentUser(data.user);
-      onLoginSuccess(data.user);
+      setCurrentUser(userObj);
+      onLoginSuccess(userObj);
     } catch (err) {
       setError(err.message || 'Login failed. Please verify credentials.');
     } finally {
