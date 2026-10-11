@@ -198,6 +198,7 @@ export const api = {
   resizeVMDisk: (vmid, disk, size, node = 'pve') =>
     request(`/vms/${vmid}/resize?node=${node}`, { method: 'POST', body: { disk, size } }),
   getVMVNC: (vmid, node = 'pve') => request(`/vms/${vmid}/vnc?node=${node}`),
+  getVMConsole: (vmid, node = 'pve') => request(`/vms/${vmid}/vnc?node=${node}`),
   deleteVM: (vmid, node = 'pve') =>
     request(`/vms/${vmid}?node=${node}`, { method: 'DELETE' }),
   vmAction: (vmid, action, node = 'pve') =>
