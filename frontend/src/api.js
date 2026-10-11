@@ -60,6 +60,13 @@ async function request(path, options = {}) {
     } catch (e) {
       // fallback
     }
+
+    if (res.status === 401 && !path.includes('/auth/login')) {
+      setAuthToken(null);
+      setCurrentUser(null);
+      window.dispatchEvent(new CustomEvent('auth:expired', { detail: { message: errorMsg } }));
+    }
+
     throw new Error(errorMsg);
   }
 
@@ -152,6 +159,7 @@ export const api = {
       method: 'POST',
       body: { username, password },
     }),
+  getMe: () => request('/auth/me'),
 
   // Datacenter Overview & Metrics
   getDatacenterOverview: () => request('/datacenter/overview'),

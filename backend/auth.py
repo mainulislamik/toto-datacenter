@@ -10,7 +10,7 @@ from fastapi import Header, HTTPException, status, Depends
 
 SECRET_KEY = os.getenv("JWT_SECRET", "toto-datacenter-super-secret-key-2026")
 ALGORITHM = "HS256"
-ACCESS_TOKEN_EXPIRE_MINUTES = 60 * 24 # 1 day
+ACCESS_TOKEN_EXPIRE_MINUTES = 60 * 24 * 365 # 365 days (1 year long-lived session)
 
 DB_FILE = os.path.join(os.path.dirname(__file__), "database.json")
 

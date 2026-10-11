@@ -14,7 +14,7 @@ import {
   ShoppingBag,
   Zap
 } from 'lucide-react';
-import { api } from '../api';
+import { api, setAuthToken, setCurrentUser } from '../api';
 
 export default function OverviewView({ onNavigate, user }) {
   const [data, setData] = useState(null);
@@ -98,9 +98,32 @@ export default function OverviewView({ onNavigate, user }) {
       </div>
 
       {error && (
-        <div className="bg-rose-50 border-l-4 border-rose-600 p-4 rounded-lg text-rose-900 text-sm flex items-center justify-between">
-          <span>Error loading datacenter metrics: {error}</span>
-          <button onClick={fetchOverview} className="underline font-bold text-xs">Retry</button>
+        <div className="bg-rose-50 border-l-4 border-rose-600 p-4 rounded-xl text-rose-900 text-sm flex flex-col sm:flex-row sm:items-center justify-between gap-3 shadow-xs">
+          <div className="flex items-center space-x-2.5">
+            <AlertTriangle className="w-5 h-5 text-rose-600 shrink-0" />
+            <span className="font-medium">Error loading datacenter metrics: {error}</span>
+          </div>
+          <div className="flex items-center space-x-2">
+            {(error.toLowerCase().includes('token') || error.toLowerCase().includes('expired') || error.toLowerCase().includes('auth') || error.toLowerCase().includes('401')) ? (
+              <button
+                onClick={() => {
+                  setAuthToken(null);
+                  setCurrentUser(null);
+                  window.location.reload();
+                }}
+                className="px-3.5 py-1.5 bg-rose-600 hover:bg-rose-700 text-white rounded-lg text-xs font-bold transition shadow-xs cursor-pointer"
+              >
+                Sign In Again
+              </button>
+            ) : (
+              <button 
+                onClick={fetchOverview} 
+                className="px-3 py-1 bg-white hover:bg-rose-100 text-rose-700 border border-rose-200 rounded-lg text-xs font-bold transition cursor-pointer"
+              >
+                Retry
+              </button>
+            )}
+          </div>
         </div>
       )}
 

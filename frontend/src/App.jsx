@@ -53,7 +53,7 @@ import VNCConsoleModal from './components/VNCConsoleModal';
 import SnapshotModal from './components/SnapshotModal';
 import MigrateModal from './components/MigrateModal';
 import LoginView from './components/LoginView';
-import { getCurrentUser, setAuthToken, setCurrentUser } from './api';
+import { getCurrentUser, setAuthToken, setCurrentUser, getAuthToken, api } from './api';
 
 const TAB_TITLES = {
   overview: 'Datacenter Overview & Metrics',
@@ -125,7 +125,28 @@ export default function App() {
       }
     };
     window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
+
+    // Listen for auth expiration
+    const handleAuthExpired = () => {
+      setUser(null);
+    };
+    window.addEventListener('auth:expired', handleAuthExpired);
+
+    // Verify token validity on initial mount
+    const token = getAuthToken();
+    if (token) {
+      api.getMe().catch((err) => {
+        console.warn('Initial session check failed:', err);
+        setAuthToken(null);
+        setCurrentUser(null);
+        setUser(null);
+      });
+    }
+
+    return () => {
+      window.removeEventListener('keydown', handleKeyDown);
+      window.removeEventListener('auth:expired', handleAuthExpired);
+    };
   }, []);
 
   const handleLoginSuccess = (userData) => {
